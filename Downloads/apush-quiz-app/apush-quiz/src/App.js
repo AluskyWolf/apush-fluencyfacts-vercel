@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, BookOpen, Clock, Users, Target, RefreshCw } from 'lucide-react';
+import { Analytics } from "@vercel/analytics/react";
 
 const App = () => {
   const [currentUnit, setCurrentUnit] = useState('all');
@@ -124,7 +125,15 @@ const App = () => {
     quizData.forEach((term, index) => {
       const userAnswer = userAnswers[index];
       if (userAnswer && quizMode === 'term-to-why-when') {
-        if (userAnswer.toLowerCase().includes(term.why.toLowerCase().substring(0, 20))) {
+        // Handle case where userAnswer might be an object with why/when properties
+        const answerText = typeof userAnswer === 'string' ? userAnswer : userAnswer.why || '';
+        if (answerText && typeof answerText === 'string' && answerText.toLowerCase().includes(term.why.toLowerCase().substring(0, 20))) {
+          correct++;
+        }
+      } else if (userAnswer && quizMode === 'why-to-term-when') {
+        // Handle the other quiz mode
+        const answerText = typeof userAnswer === 'string' ? userAnswer : '';
+        if (answerText && typeof answerText === 'string' && answerText.toLowerCase().includes(term.term.toLowerCase())) {
           correct++;
         }
       }
@@ -368,6 +377,7 @@ const App = () => {
           )}
         </div>
       </div>
+      <Analytics />
     </div>
   );
 };
