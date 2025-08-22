@@ -372,6 +372,83 @@ const App = () => {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Main Menu
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">APUSH Study App</h1>
+          <p className="text-gray-600">Master your AP US History terms with interactive learning sessions</p>
+        </div>
+
+        {/* Unit Selection */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Select Unit</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            {units.map((unit) => (
+              <button
+                key={unit.id}
+                onClick={() => setCurrentUnit(unit.id)}
+                className={`p-3 rounded-lg border-2 transition-colors ${
+                  currentUnit === unit.id
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                }`}
+              >
+                <div className="font-semibold">{unit.name}</div>
+                <div className="text-xs text-gray-500">{unit.description}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Study Modes */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Learning Modes</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {learnModes.map((mode) => (
+              <button
+                key={mode.id}
+                onClick={() => startLearn(mode.id)}
+                className="p-6 border-2 border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
+              >
+                <div className="flex items-start space-x-3">
+                  <div className="text-blue-600 mt-1">{mode.icon}</div>
+                  <div>
+                    <h3 className="font-semibold text-gray-800">{mode.name}</h3>
+                    <p className="text-sm text-gray-600 mt-1">{mode.description}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Terms Preview */}
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">
+            Terms Preview ({getFilteredTerms().length} terms)
+          </h2>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+            {getFilteredTerms().slice(0, 9).map((term) => (
+              <div key={term.id} className="p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-semibold text-gray-800">{term.term}</h3>
+                <p className="text-sm text-gray-600 mt-1">{term.when}</p>
+                <p className="text-xs text-gray-500 mt-2 line-clamp-3">{term.why}</p>
+              </div>
+            ))}
+          </div>
+          {getFilteredTerms().length > 9 && (
+            <p className="text-sm text-gray-500 mt-4 text-center">
+              And {getFilteredTerms().length - 9} more terms...
+            </p>
+          )}
         </div><p className="text-gray-600 mb-8">
               You answered {Object.keys(userAnswers).length} out of {quizData.length} questions
             </p>
