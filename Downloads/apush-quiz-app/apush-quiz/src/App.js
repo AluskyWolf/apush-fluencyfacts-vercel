@@ -54,66 +54,149 @@ const extractKeywords = (term = {}) => {
   return Array.from(new Set(words)).slice(0, 10);
 };
 
+const normalizeAnswer = (text) => {
+  return text.toLowerCase().trim()
+    // Normalize common date abbreviations
+    .replace(/\bbce?\b/g, 'bc')
+    .replace(/\bce\b/g, 'bc') 
+    .replace(/\bad\b/g, 'ad')
+    // Normalize time references
+    .replace(/\btoday\b/g, 'present')
+    .replace(/\bnow\b/g, 'present')
+    .replace(/\bcurrent\b/g, 'present')
+    .replace(/\bpresent day\b/g, 'present')
+    // Normalize common geographical terms
+    .replace(/\bamerican southwest\b/g, 'southwest america')
+    .replace(/\bsouthwestern united states\b/g, 'southwest america')
+    .replace(/\bsw usa\b/g, 'southwest america')
+    .replace(/\bthe south\b/g, 'south')
+    // Normalize common academic terms
+    .replace(/\bagricultural villages\b/g, 'agriculture settlements')
+    .replace(/\bsettled communities\b/g, 'settlements')
+    .replace(/\bpopulation growth\b/g, 'population increase')
+    .replace(/\bhealth improvements\b/g, 'health increase')
+    // Remove extra spacing
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = []) => {
   if (!userAnswer || !correctAnswer) return 0;
-  const userLower = String(userAnswer).toLowerCase().trim();
-  const correctLower = String(correctAnswer).toLowerCase().trim();
   
-  // If exact match (ignoring case), return perfect score
-  if (userLower === correctLower) return 1;
+  // Apply normalization to both answers
+  const userNormalized = normalizeAnswer(String(userAnswer));
+  const correctNormalized = normalizeAnswer(String(correctAnswer));
   
-  // Split both answers into individual terms/phrases
-  const userTerms = userLower.split(/[,;&]+/).map(term => term.trim()).filter(term => term.length > 0);
-  const correctTerms = correctLower.split(/[,;&]+/).map(term => term.trim()).filter(term => term.length > 0);
+  // If exact match after normalization, return perfect score
+  if (userNormalized === correctNormalized) return 1;
   
-  if (correctTerms.length === 0) return 0;
+  // Check for high-level conceptual similarity with normalized text
+  const conceptualSimilarity = defaultCompare(userNormalized, correctNormalized);
+  if (conceptualSimilarity >= 0.85) return Math.min(1, conceptualSimilarity + 0.1);
   
-  // Find matches between user terms and correct terms
-  let matchedCorrectTerms = 0;
-  let totalSimilarity = 0;
+  // Split both answers into individual terms/phrases and also individual words
+  const userTerms = userNormalized.split(/[,;&\-]+/).map(term => term.trim()).filter(term => term.length > 0);
+  const correctTerms = correctNormalized.split(/[,;&\-]+/).map(term => term.trim()).filter(term => term.length > 0);
   
-  correctTerms.forEach(correctTerm => {
-    let bestMatchScore = 0;
-    userTerms.forEach(userTerm => {
-      const similarity = defaultCompare(userTerm, correctTerm);
-      bestMatchScore = Math.max(bestMatchScore, similarity);
+  // Also split into individual words for more granular matching
+  const userWords = userNormalized.split(/\W+/).filter(word => word.length > 2);
+  const correctWords = correctNormalized.split(/\W+/).filter(word => word.length > 2);
+  
+  if (correctTerms.length === 0 && correctWords.length === 0) return 0;
+  
+  // Term-based matching (primary method)
+  let termScore = 0;
+  if (correctTerms.length > 0) {
+    let matchedCorrectTerms = 0;
+    let totalTermSimilarity = 0;
+    
+    correctTerms.forEach(correctTerm => {
+      let bestMatchScore = 0;
+      userTerms.forEach(userTerm => {
+        const similarity = defaultCompare(userTerm, correctTerm);
+        bestMatchScore = Math.max(bestMatchScore, similarity);
+      });
+      
+      // More lenient threshold for term matching
+      if (bestMatchScore >= 0.6) {
+        matchedCorrectTerms++;
+        totalTermSimilarity += bestMatchScore;
+      }
     });
     
-    // Only count as matched if similarity is above 0.75 (stricter threshold)
-    if (bestMatchScore >= 0.75) {
-      matchedCorrectTerms++;
-      totalSimilarity += bestMatchScore;
+    if (matchedCorrectTerms > 0) {
+      const avgTermSimilarity = totalTermSimilarity / matchedCorrectTerms;
+      termScore = (matchedCorrectTerms / correctTerms.length) * avgTermSimilarity;
     }
-  });
-  
-  // Base score is the percentage of correct terms that were matched
-  let baseScore = matchedCorrectTerms / correctTerms.length;
-  
-  // Apply quality modifier based on average similarity of matched terms
-  if (matchedCorrectTerms > 0) {
-    const avgSimilarity = totalSimilarity / matchedCorrectTerms;
-    baseScore = baseScore * avgSimilarity;
   }
   
-  // Penalty for extra incorrect terms (penalize false information)
-  const extraTermsPenalty = Math.max(0, userTerms.length - correctTerms.length) * 0.05;
-  baseScore = Math.max(0, baseScore - extraTermsPenalty);
+  // Word-based matching (backup method for partial credit)
+  let wordScore = 0;
+  if (correctWords.length > 0) {
+    let matchedWords = 0;
+    let totalWordSimilarity = 0;
+    
+    correctWords.forEach(correctWord => {
+      let bestWordMatch = 0;
+      userWords.forEach(userWord => {
+        const similarity = defaultCompare(userWord, correctWord);
+        bestWordMatch = Math.max(bestWordMatch, similarity);
+      });
+      
+      if (bestWordMatch >= 0.7) {
+        matchedWords++;
+        totalWordSimilarity += bestWordMatch;
+      }
+    });
+    
+    if (matchedWords > 0) {
+      const avgWordSimilarity = totalWordSimilarity / matchedWords;
+      wordScore = (matchedWords / correctWords.length) * avgWordSimilarity * 0.9; // Higher weight for word matches
+    }
+  }
   
-  // Small keyword bonus only for exact keyword matches
+  // Take the better of term-based or word-based matching
+  let finalScore = Math.max(termScore, wordScore, conceptualSimilarity);
+  
+  // Special boost for date ranges and time periods
+  const userHasDateRange = /\d+.*?(?:bc|ad|present|today).*?(?:bc|ad|present|today|\d+)/i.test(String(userAnswer));
+  const correctHasDateRange = /\d+.*?(?:bc|ad|present|today).*?(?:bc|ad|present|today|\d+)/i.test(String(correctAnswer));
+  
+  if (userHasDateRange && correctHasDateRange) {
+    // Extract key date components
+    const userDates = String(userAnswer).toLowerCase().match(/\d+|bc|bce|ad|present|today/g) || [];
+    const correctDates = String(correctAnswer).toLowerCase().match(/\d+|bc|bce|ad|present|today/g) || [];
+    
+    // Normalize date terms for comparison
+    const normalizeDate = (date) => date.replace(/bce?/g, 'bc').replace(/today/g, 'present');
+    const userDatesNorm = userDates.map(normalizeDate);
+    const correctDatesNorm = correctDates.map(normalizeDate);
+    
+    let dateMatches = 0;
+    userDatesNorm.forEach(userDate => {
+      if (correctDatesNorm.includes(userDate)) {
+        dateMatches++;
+      }
+    });
+    
+    if (dateMatches >= 2 && correctDatesNorm.length >= 2) {
+      // If we match most of the key date components, give very high score
+      finalScore = Math.max(finalScore, 0.9 + (dateMatches / Math.max(correctDatesNorm.length, userDatesNorm.length)) * 0.1);
+    }
+  }
+  
+  // Keyword bonus for context
   let keywordBonus = 0;
   keywords.forEach(keyword => {
     const k = String(keyword).toLowerCase().trim();
     if (k && k.length > 3) {
-      // Check if keyword appears in both answers exactly
-      const keywordInUser = userLower.split(/\W+/).includes(k);
-      const keywordInCorrect = correctLower.split(/\W+/).includes(k);
-      if (keywordInUser && keywordInCorrect) {
-        keywordBonus += 0.02; // Much smaller bonus
+      if (userNormalized.includes(k) && correctNormalized.includes(k)) {
+        keywordBonus += 0.03;
       }
     }
   });
   
-  return Math.min(1, baseScore + keywordBonus);
+  return Math.min(1, finalScore + keywordBonus);
 };
 
 const getScoreLevel = (fraction) => {
