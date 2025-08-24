@@ -63,53 +63,57 @@ const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = []) => {
   if (userLower === correctLower) return 1;
   
   // Split both answers into individual terms/phrases
-  const userTerms = userLower.split(/[,;]+/).map(term => term.trim()).filter(term => term.length > 0);
-  const correctTerms = correctLower.split(/[,;]+/).map(term => term.trim()).filter(term => term.length > 0);
+  const userTerms = userLower.split(/[,;&]+/).map(term => term.trim()).filter(term => term.length > 0);
+  const correctTerms = correctLower.split(/[,;&]+/).map(term => term.trim()).filter(term => term.length > 0);
   
-  // Calculate token-based similarity
-  let tokenScore = 0;
-  let matchedTerms = 0;
+  if (correctTerms.length === 0) return 0;
   
-  userTerms.forEach(userTerm => {
-    let bestMatch = 0;
-    correctTerms.forEach(correctTerm => {
+  // Find matches between user terms and correct terms
+  let matchedCorrectTerms = 0;
+  let totalSimilarity = 0;
+  
+  correctTerms.forEach(correctTerm => {
+    let bestMatchScore = 0;
+    userTerms.forEach(userTerm => {
       const similarity = defaultCompare(userTerm, correctTerm);
-      bestMatch = Math.max(bestMatch, similarity);
+      bestMatchScore = Math.max(bestMatchScore, similarity);
     });
-    // Consider it a match if similarity is above 0.6
-    if (bestMatch > 0.6) {
-      matchedTerms++;
-      tokenScore += bestMatch;
+    
+    // Only count as matched if similarity is above 0.75 (stricter threshold)
+    if (bestMatchScore >= 0.75) {
+      matchedCorrectTerms++;
+      totalSimilarity += bestMatchScore;
     }
   });
   
-  // Calculate percentage of terms matched
-  const termCoverage = correctTerms.length > 0 ? matchedTerms / correctTerms.length : 0;
-  const avgTokenScore = matchedTerms > 0 ? tokenScore / matchedTerms : 0;
+  // Base score is the percentage of correct terms that were matched
+  let baseScore = matchedCorrectTerms / correctTerms.length;
   
-  // Combine term coverage with average token similarity
-  let finalScore = (termCoverage * 0.7) + (avgTokenScore * 0.3);
+  // Apply quality modifier based on average similarity of matched terms
+  if (matchedCorrectTerms > 0) {
+    const avgSimilarity = totalSimilarity / matchedCorrectTerms;
+    baseScore = baseScore * avgSimilarity;
+  }
   
-  // Add keyword bonus for additional context
+  // Penalty for extra incorrect terms (penalize false information)
+  const extraTermsPenalty = Math.max(0, userTerms.length - correctTerms.length) * 0.05;
+  baseScore = Math.max(0, baseScore - extraTermsPenalty);
+  
+  // Small keyword bonus only for exact keyword matches
   let keywordBonus = 0;
   keywords.forEach(keyword => {
-    const k = String(keyword).toLowerCase();
-    if (k && k.length > 3 && userLower.includes(k) && correctLower.includes(k)) {
-      keywordBonus += 0.05;
+    const k = String(keyword).toLowerCase().trim();
+    if (k && k.length > 3) {
+      // Check if keyword appears in both answers exactly
+      const keywordInUser = userLower.split(/\W+/).includes(k);
+      const keywordInCorrect = correctLower.split(/\W+/).includes(k);
+      if (keywordInUser && keywordInCorrect) {
+        keywordBonus += 0.02; // Much smaller bonus
+      }
     }
   });
   
-  // Also check for partial string inclusion as backup
-  const inclusionScore = Math.max(
-    userLower.includes(correctLower) ? 0.9 : 0,
-    correctLower.includes(userLower) ? 0.8 : 0
-  );
-  
-  // Take the best of token-based score, inclusion score, or original similarity
-  const originalSimilarity = defaultCompare(userLower, correctLower);
-  finalScore = Math.max(finalScore, inclusionScore, originalSimilarity);
-  
-  return Math.min(1, finalScore + keywordBonus);
+  return Math.min(1, baseScore + keywordBonus);
 };
 
 const getScoreLevel = (fraction) => {
