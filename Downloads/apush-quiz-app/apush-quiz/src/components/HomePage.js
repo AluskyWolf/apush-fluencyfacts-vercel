@@ -53,7 +53,7 @@ const HomePage = () => {
             <h1 className="text-5xl font-bold text-gray-800">AP Terms Quiz Hub</h1>
           </div>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Master your AP History terms 
+            Master your AP History terms. 
             Choose your subject and start practicing today.
           </p>
         </div>
@@ -85,7 +85,7 @@ const HomePage = () => {
 
         {/* Features Section */}
         <div className="bg-white rounded-2xl shadow-lg p-8 mb-16">
-  <h2 className="text-3xl font-bold text-gray-800 text-center mb-12">Why Choose Our Quiz Platform?</h2>
+  <h2 className="text-3xl font-bold text-gray-800 text-center mb-12">Features</h2>
   <div className="flex flex-wrap justify-center gap-8">
     {features.map((feature, index) => (
       <div key={index} className="text-center max-w-sm">
