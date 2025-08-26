@@ -442,6 +442,7 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentUnit, setCurrentUnit] = useState('all');
+  const [previousFilteredLength, setPreviousFilteredLength] = useState(0); // Track previous length
   const [quizMode, setQuizMode] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [userAnswers, setUserAnswers] = useState({});
@@ -450,6 +451,7 @@ const App = () => {
   const [showResult, setShowResult] = useState(false);
   const [startTime, setStartTime] = useState(null);
   const [endTime, setEndTime] = useState(null);
+  const [previewIndex, setPreviewIndex] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -467,6 +469,22 @@ const App = () => {
 
   const getFilteredTerms = () => currentUnit === 'all' ? apushTerms : apushTerms.filter(term => term.unit === parseInt(currentUnit));
   const getAvailableUnits = () => [...new Set(apushTerms.map(term => term.unit))].sort((a, b) => a - b);
+
+  // Smart preview navigation when unit changes
+  useEffect(() => {
+    const filtered = getFilteredTerms();
+    const currentFilteredLength = filtered.length;
+    
+    // If we switched to a unit with fewer cards and current preview index is out of bounds
+    if (currentFilteredLength > 0 && previewIndex >= currentFilteredLength) {
+      // Calculate the last valid page (groups of 4)
+      const lastPageIndex = Math.floor(Math.max(0, currentFilteredLength - 1) / 4) * 4;
+      setPreviewIndex(lastPageIndex);
+    }
+    
+    // Update the previous length for next comparison
+    setPreviousFilteredLength(currentFilteredLength);
+  }, [currentUnit, apushTerms]); // Depend on currentUnit and apushTerms
 
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
@@ -522,6 +540,13 @@ const App = () => {
     setShowResult(false);
     setStartTime(null);
     setEndTime(null);
+    setPreviewIndex(0);
+  };
+
+  // Enhanced unit change handler
+  const handleUnitChange = (newUnit) => {
+    setCurrentUnit(newUnit);
+    // The useEffect will handle the preview index adjustment
   };
 
   const modeStyles = {
@@ -696,7 +721,7 @@ const App = () => {
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Select Unit</h2>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => setCurrentUnit('all')}
+              onClick={() => handleUnitChange('all')}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                 currentUnit === 'all'
                   ? 'bg-indigo-600 text-white'
@@ -708,7 +733,7 @@ const App = () => {
             {availableUnits.map(unit => (
               <button
                 key={unit}
-                onClick={() => setCurrentUnit(unit.toString())}
+                onClick={() => handleUnitChange(unit.toString())}
                 className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                   currentUnit === unit.toString()
                     ? 'bg-indigo-600 text-white'
@@ -763,6 +788,112 @@ const App = () => {
             </div>
           )}
         </div>
+
+        {/* Preview Cards */}
+        {filtered.length > 0 && (
+          <div className="mt-6 bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Preview Cards</h2>
+            <p className="text-gray-600 mb-4">Browse through the terms from your selected unit:</p>
+            
+            {/* Navigation Controls */}
+            <div className="flex justify-between items-center mb-4">
+              <button 
+                onClick={() => setPreviewIndex(Math.max(0, previewIndex - 4))}
+                disabled={previewIndex === 0}
+                className="flex items-center px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" />
+                Previous
+              </button>
+              
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-600">
+                  Showing {previewIndex + 1}-{Math.min(previewIndex + 4, filtered.length)} of {filtered.length}
+                </span>
+                <div className="flex space-x-1">
+                  {Array.from({ length: Math.ceil(filtered.length / 4) }).map((_, pageIndex) => (
+                    <button
+                      key={pageIndex}
+                      onClick={() => setPreviewIndex(pageIndex * 4)}
+                      className={`w-2 h-2 rounded-full transition-colors ${
+                        Math.floor(previewIndex / 4) === pageIndex 
+                          ? 'bg-indigo-600' 
+                          : 'bg-gray-300 hover:bg-gray-400'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              
+              <button 
+                onClick={() => setPreviewIndex(Math.min(filtered.length - 4, previewIndex + 4))}
+                disabled={previewIndex + 4 >= filtered.length}
+                className="flex items-center px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 rounded-lg transition-colors"
+              >
+                Next
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filtered.slice(previewIndex, previewIndex + 4).map((term, index) => (
+                <div key={term.id || index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="mb-3">
+                    <h3 className="font-bold text-lg text-indigo-600">{term.term}</h3>
+                    {term.unit && (
+                      <span className="inline-block bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full">
+                        Unit {term.unit}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2 text-sm">
+                    {term.who && (
+                      <div>
+                        <span className="font-medium text-blue-700">Who:</span>
+                        <span className="text-gray-700 ml-1">{term.who.length > 60 ? `${term.who.substring(0, 60)}...` : term.who}</span>
+                      </div>
+                    )}
+                    {term.what && (
+                      <div>
+                        <span className="font-medium text-green-700">What:</span>
+                        <span className="text-gray-700 ml-1">{term.what.length > 60 ? `${term.what.substring(0, 60)}...` : term.what}</span>
+                      </div>
+                    )}
+                    {term.where && (
+                      <div>
+                        <span className="font-medium text-yellow-700">Where:</span>
+                        <span className="text-gray-700 ml-1">{term.where.length > 60 ? `${term.where.substring(0, 60)}...` : term.where}</span>
+                      </div>
+                    )}
+                    {term.when && (
+                      <div>
+                        <span className="font-medium text-red-700">When:</span>
+                        <span className="text-gray-700 ml-1">{term.when.length > 60 ? `${term.when.substring(0, 60)}...` : term.when}</span>
+                      </div>
+                    )}
+                    {term.why && (
+                      <div>
+                        <span className="font-medium text-indigo-700">Why:</span>
+                        <span className="text-gray-700 ml-1">{term.why.length > 60 ? `${term.why.substring(0, 60)}...` : term.why}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Quick Jump to Random Cards */}
+            <div className="mt-4 text-center">
+              <button 
+                onClick={() => setPreviewIndex(Math.floor(Math.random() * Math.max(1, filtered.length - 3)) / 4 * 4)}
+                className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                🎲 Show Random Cards
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="mt-6 text-center text-gray-500 text-sm">
