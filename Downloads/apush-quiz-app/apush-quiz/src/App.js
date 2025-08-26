@@ -80,12 +80,109 @@ const normalizeAnswer = (text) => {
     .trim();
 };
 
-const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = []) => {
+// CRITICAL: Detect non-answers and garbage input
+const isNonAnswer = (text) => {
+  const cleaned = text.toLowerCase().trim();
+  
+  // Empty or whitespace only
+  if (!cleaned || cleaned.length === 0) return true;
+  
+  // Common non-answers
+  const nonAnswers = [
+    'idk', "i don't know", 'dont know', "don't know", 'dk', 'dunno',
+    'i dunno', 'no idea', 'not sure', '???', '?', 'unknown', 'n/a', 'na',
+    'nothing', 'none', 'blank', 'empty', 'skip', 'pass', 'help', 'uhh',
+    'umm', 'uh', 'um', 'err', 'erm', 'hmm', 'hm'
+  ];
+  
+  if (nonAnswers.includes(cleaned)) return true;
+  
+  // Single characters without meaningful context
+  if (cleaned.length === 1 && !/^[a-z]$/i.test(cleaned)) return true;
+  
+  // Only punctuation or random characters
+  if (/^[^\w\s]*$/.test(cleaned)) return true;
+  
+  // Repeated characters (like "aaa" or "111")
+  if (/^(.)\1{2,}$/.test(cleaned)) return true;
+  
+  return false;
+};
+
+// CRITICAL: Field-specific minimum requirements
+const meetsMinimumRequirements = (userAnswer, field, correctAnswer) => {
+  const cleaned = userAnswer.toLowerCase().trim();
+  const correctLength = String(correctAnswer).length;
+  
+  // Absolute minimum - must have at least one real word
+  if (cleaned.length < 2) return false;
+  
+  // Field-specific minimum requirements
+  switch (field) {
+    case 'who':
+      // Must be at least 3 characters for people/groups
+      if (cleaned.length < 3) return false;
+      // Single letters are almost never valid for "who" questions
+      if (cleaned.length === 1) return false;
+      break;
+      
+    case 'what':
+      // Must be at least 4 characters for "what" questions
+      if (cleaned.length < 4) return false;
+      break;
+      
+    case 'where':
+      // Must be at least 3 characters for places
+      if (cleaned.length < 3) return false;
+      // Single letters are almost never valid for "where" questions  
+      if (cleaned.length === 1) return false;
+      break;
+      
+    case 'when':
+      // Can be shorter for dates, but should have some context
+      if (cleaned.length < 2) return false;
+      // Single digits without context are usually not valid dates
+      if (/^\d$/.test(cleaned)) return false;
+      break;
+      
+    case 'why':
+      // Explanations should be substantial
+      if (cleaned.length < 8) return false;
+      break;
+      
+    default:
+      if (cleaned.length < 3) return false;
+  }
+  
+  // Context-based checks - if correct answer is long, user answer shouldn't be tiny
+  if (correctLength > 30 && cleaned.length < 8) return false;
+  if (correctLength > 50 && cleaned.length < 12) return false;
+  
+  // Must contain at least one alphabetic character
+  if (!/[a-zA-Z]/.test(cleaned)) return false;
+  
+  return true;
+};
+
+// Enhanced scoring function to replace your existing calculateSimilarityScore
+const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = [], field = null) => {
   if (!userAnswer || !correctAnswer) return 0;
   
-  // Apply normalization to both answers
-  const userNormalized = normalizeAnswer(String(userAnswer));
+  const userOriginal = String(userAnswer).trim();
+  const userNormalized = normalizeAnswer(userOriginal);
   const correctNormalized = normalizeAnswer(String(correctAnswer));
+  
+  // CRITICAL: Filter out non-answers and garbage input
+  if (isNonAnswer(userOriginal)) return 0;
+  
+  // CRITICAL: Check minimum requirements
+  if (!meetsMinimumRequirements(userOriginal, field, correctAnswer)) {
+    // Give minimal credit only if there's some relevant content
+    const hasRelevantWord = keywords.some(keyword => 
+      userNormalized.includes(keyword.toLowerCase())
+    );
+    return hasRelevantWord ? 0.1 : 0;
+  }
   
   // If exact match after normalization, return perfect score
   if (userNormalized === correctNormalized) return 1;
@@ -94,17 +191,16 @@ const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = []) => {
   const conceptualSimilarity = defaultCompare(userNormalized, correctNormalized);
   if (conceptualSimilarity >= 0.85) return Math.min(1, conceptualSimilarity + 0.1);
   
-  // Split both answers into individual terms/phrases and also individual words
+  // Split both answers into terms and words for matching
   const userTerms = userNormalized.split(/[,;&\-]+/).map(term => term.trim()).filter(term => term.length > 0);
   const correctTerms = correctNormalized.split(/[,;&\-]+/).map(term => term.trim()).filter(term => term.length > 0);
   
-  // Also split into individual words for more granular matching
   const userWords = userNormalized.split(/\W+/).filter(word => word.length > 2);
   const correctWords = correctNormalized.split(/\W+/).filter(word => word.length > 2);
   
   if (correctTerms.length === 0 && correctWords.length === 0) return 0;
   
-  // Term-based matching (primary method)
+  // Term-based matching
   let termScore = 0;
   if (correctTerms.length > 0) {
     let matchedCorrectTerms = 0;
@@ -117,7 +213,6 @@ const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = []) => {
         bestMatchScore = Math.max(bestMatchScore, similarity);
       });
       
-      // More lenient threshold for term matching
       if (bestMatchScore >= 0.6) {
         matchedCorrectTerms++;
         totalTermSimilarity += bestMatchScore;
@@ -130,7 +225,7 @@ const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = []) => {
     }
   }
   
-  // Word-based matching (backup method for partial credit)
+  // Word-based matching
   let wordScore = 0;
   if (correctWords.length > 0) {
     let matchedWords = 0;
@@ -151,41 +246,73 @@ const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = []) => {
     
     if (matchedWords > 0) {
       const avgWordSimilarity = totalWordSimilarity / matchedWords;
-      wordScore = (matchedWords / correctWords.length) * avgWordSimilarity * 0.9; // Higher weight for word matches
+      wordScore = (matchedWords / correctWords.length) * avgWordSimilarity * 0.8;
     }
   }
   
-  // Take the better of term-based or word-based matching
+  // Take the better score
   let finalScore = Math.max(termScore, wordScore, conceptualSimilarity);
   
-  // Special boost for date ranges and time periods
-  const userHasDateRange = /\d+.*?(?:bc|ad|present|today).*?(?:bc|ad|present|today|\d+)/i.test(String(userAnswer));
-  const correctHasDateRange = /\d+.*?(?:bc|ad|present|today).*?(?:bc|ad|present|today|\d+)/i.test(String(correctAnswer));
-  
-  if (userHasDateRange && correctHasDateRange) {
-    // Extract key date components
-    const userDates = String(userAnswer).toLowerCase().match(/\d+|bc|bce|ad|present|today/g) || [];
-    const correctDates = String(correctAnswer).toLowerCase().match(/\d+|bc|bce|ad|present|today/g) || [];
+  // Enhanced date matching for 'when' field
+  if (field === 'when') {
+    const userHasDate = /\d+.*?(?:bc|bce|ad|ce|present|today)|\d{4}|\d+s|century/i.test(userOriginal);
+    const correctHasDate = /\d+.*?(?:bc|bce|ad|ce|present|today)|\d{4}|\d+s|century/i.test(String(correctAnswer));
     
-    // Normalize date terms for comparison
-    const normalizeDate = (date) => date.replace(/bce?/g, 'bc').replace(/today/g, 'present');
-    const userDatesNorm = userDates.map(normalizeDate);
-    const correctDatesNorm = correctDates.map(normalizeDate);
-    
-    let dateMatches = 0;
-    userDatesNorm.forEach(userDate => {
-      if (correctDatesNorm.includes(userDate)) {
-        dateMatches++;
+    if (userHasDate && correctHasDate) {
+      // More sophisticated date matching
+      const userDates = userOriginal.toLowerCase().match(/\d+|bc|bce|ad|ce|present|today|century/g) || [];
+      const correctDates = String(correctAnswer).toLowerCase().match(/\d+|bc|bce|ad|ce|present|today|century/g) || [];
+      
+      const normalizeDate = (date) => date.replace(/bce?/g, 'bc').replace(/today/g, 'present');
+      const userDatesNorm = userDates.map(normalizeDate);
+      const correctDatesNorm = correctDates.map(normalizeDate);
+      
+      let dateMatches = 0;
+      userDatesNorm.forEach(userDate => {
+        if (correctDatesNorm.includes(userDate)) {
+          dateMatches++;
+        }
+      });
+      
+      if (dateMatches >= 1 && correctDatesNorm.length >= 1) {
+        const dateScore = 0.8 + (dateMatches / Math.max(correctDatesNorm.length, userDatesNorm.length)) * 0.2;
+        finalScore = Math.max(finalScore, dateScore);
       }
-    });
-    
-    if (dateMatches >= 2 && correctDatesNorm.length >= 2) {
-      // If we match most of the key date components, give very high score
-      finalScore = Math.max(finalScore, 0.9 + (dateMatches / Math.max(correctDatesNorm.length, userDatesNorm.length)) * 0.1);
     }
   }
   
-  // Keyword bonus for context
+  // Field-specific adjustments
+  if (field === 'who') {
+    // Boost scores for proper nouns and people/group names
+    const hasProperNoun = /\b[A-Z][a-z]+/.test(userOriginal);
+    if (hasProperNoun && finalScore > 0.3) {
+      finalScore = Math.min(1, finalScore + 0.1);
+    }
+    
+    // Special handling for more specific answers in "who" questions
+    // Check if user provided more specific groups than the general answer
+    const specificEuropeanGroups = ['spanish', 'portuguese', 'french', 'dutch', 'english', 'british', 'conquistadors', 'colonists'];
+    const userHasSpecificGroup = specificEuropeanGroups.some(group => 
+      userNormalized.includes(group)
+    );
+    const correctHasGeneral = /european|settlers|colonizers/i.test(String(correctAnswer));
+    
+    if (userHasSpecificGroup && correctHasGeneral && finalScore >= 0.4) {
+      // Reward specificity - student identified exact European group
+      finalScore = Math.min(1, finalScore + 0.2);
+    }
+  }
+  
+  if (field === 'where') {
+    // Boost scores for location indicators
+    const locationWords = ['america', 'states', 'colony', 'territory', 'region', 'north', 'south', 'east', 'west'];
+    const hasLocation = locationWords.some(word => userNormalized.includes(word));
+    if (hasLocation && finalScore > 0.3) {
+      finalScore = Math.min(1, finalScore + 0.1);
+    }
+  }
+  
+  // Keyword bonus
   let keywordBonus = 0;
   keywords.forEach(keyword => {
     const k = String(keyword).toLowerCase().trim();
@@ -196,14 +323,96 @@ const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = []) => {
     }
   });
   
-  return Math.min(1, finalScore + keywordBonus);
+  // Apply penalties for very short answers relative to correct answer length
+  const lengthRatio = userOriginal.length / String(correctAnswer).length;
+  let lengthPenalty = 0;
+  
+  if (lengthRatio < 0.2 && finalScore > 0.5) {
+    lengthPenalty = Math.min(0.3, (0.2 - lengthRatio) * 1.5);
+  }
+  
+  finalScore = Math.max(0, Math.min(1, finalScore + keywordBonus - lengthPenalty));
+  
+  // Final sanity check - very short answers should rarely score above 70%
+  if (userOriginal.length <= 3 && finalScore > 0.7) {
+    finalScore = Math.min(0.7, finalScore);
+  }
+  
+  return finalScore;
 };
 
-const getScoreLevel = (fraction) => {
-  if (fraction >= 0.8) return { level: 'excellent', color: '#10B981', bgColor: '#D1FAE5', icon: <CheckCircle className="w-5 h-5" /> };
-  if (fraction >= 0.6) return { level: 'good', color: '#3B82F6', bgColor: '#DBEAFE', icon: <AlertCircle className="w-5 h-5" /> };
-  if (fraction >= 0.4) return { level: 'partial', color: '#F59E0B', bgColor: '#FEF3C7', icon: <AlertCircle className="w-5 h-5" /> };
-  return { level: 'needs work', color: '#EF4444', bgColor: '#FEE2E2', icon: <XCircle className="w-5 h-5" /> };
+// Enhanced score level function with better feedback
+const getScoreLevel = (fraction, userAnswer = '', field = null) => {
+  const userLength = String(userAnswer).trim().length;
+  
+  // Special handling for non-answers
+  if (fraction === 0 && userLength <= 3) {
+    return { 
+      level: 'no answer', 
+      color: '#991B1B', 
+      bgColor: '#FEE2E2', 
+      icon: <XCircle className="w-5 h-5" />,
+      message: 'Please provide a meaningful answer.' 
+    };
+  }
+  
+  if (fraction >= 0.9) {
+    return { 
+      level: 'excellent', 
+      color: '#10B981', 
+      bgColor: '#D1FAE5', 
+      icon: <CheckCircle className="w-5 h-5" />,
+      message: 'Outstanding! You demonstrated comprehensive understanding.'
+    };
+  }
+  
+  if (fraction >= 0.75) {
+    return { 
+      level: 'very good', 
+      color: '#059669', 
+      bgColor: '#D1FAE5', 
+      icon: <CheckCircle className="w-5 h-5" />,
+      message: 'Very good! You captured the key concepts well.'
+    };
+  }
+  
+  if (fraction >= 0.6) {
+    return { 
+      level: 'good', 
+      color: '#3B82F6', 
+      bgColor: '#DBEAFE', 
+      icon: <AlertCircle className="w-5 h-5" />,
+      message: 'Good work! You got the main idea with some details.'
+    };
+  }
+  
+  if (fraction >= 0.4) {
+    return { 
+      level: 'partial', 
+      color: '#F59E0B', 
+      bgColor: '#FEF3C7', 
+      icon: <AlertCircle className="w-5 h-5" />,
+      message: 'Partially correct. You have some understanding but need more detail.'
+    };
+  }
+  
+  if (fraction >= 0.2) {
+    return { 
+      level: 'needs improvement', 
+      color: '#DC2626', 
+      bgColor: '#FEE2E2', 
+      icon: <XCircle className="w-5 h-5" />,
+      message: 'Your answer shows limited understanding. Please review this topic.'
+    };
+  }
+  
+  return { 
+    level: 'incorrect', 
+    color: '#991B1B', 
+    bgColor: '#FEE2E2', 
+    icon: <XCircle className="w-5 h-5" />,
+    message: 'Incorrect. Please study this topic more thoroughly.'
+  };
 };
 
 const loadTermsFromFile = async () => {
@@ -286,7 +495,7 @@ const App = () => {
       const key = `${currentQuestion}-${field}`;
       const userAnswer = userAnswers[key] || '';
       const correctAnswer = currentTerm[field] || '';
-      const score = calculateSimilarityScore(userAnswer, correctAnswer, currentTerm.keywords);
+      const score = calculateSimilarityScore(userAnswer, correctAnswer, currentTerm.keywords, field);
       scores[key] = score;
     });
     setQuestionScores(prev => ({ ...prev, ...scores }));
@@ -413,6 +622,8 @@ const App = () => {
                 const userAnswer = userAnswers[key] || '';
                 const score = questionScores[key];
                 const fieldLabels = { who: 'Who', what: 'What', where: 'Where', when: 'When', why: 'Why/Significance' };
+                const scoreLevel = showFeedback ? getScoreLevel(score, userAnswer, field) : null;
+                
                 return (
                   <div key={field} className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">{fieldLabels[field]}:</label>
@@ -424,18 +635,23 @@ const App = () => {
                       placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
                       disabled={showFeedback}
                     />
-                    {showFeedback && (
-                      <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: getScoreLevel(score).bgColor }}>
+                    {showFeedback && scoreLevel && (
+                      <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: scoreLevel.bgColor }}>
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-medium text-gray-700">Your Score:</span>
                           <div className="flex items-center">
-                            {getScoreLevel(score).icon}
-                            <span className="ml-2 font-medium" style={{ color: getScoreLevel(score).color }}>
-                              {Math.round(score * 100)}% ({getScoreLevel(score).level})
+                            {scoreLevel.icon}
+                            <span className="ml-2 font-medium" style={{ color: scoreLevel.color }}>
+                              {Math.round(score * 100)}% ({scoreLevel.level})
                             </span>
                           </div>
                         </div>
-                        <div className="text-sm text-gray-700"><strong>Correct Answer:</strong> {currentTerm[field]}</div>
+                        <div className="text-sm text-gray-700 mb-2">
+                          <strong>Correct Answer:</strong> {currentTerm[field]}
+                        </div>
+                        <div className="text-sm text-gray-600 italic">
+                          {scoreLevel.message}
+                        </div>
                       </div>
                     )}
                   </div>
