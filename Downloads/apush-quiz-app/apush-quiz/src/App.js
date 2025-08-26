@@ -7,7 +7,9 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  RotateCcw
+  RotateCcw,
+  Check,
+  X
 } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -443,8 +445,8 @@ const App = () => {
   const [apushTerms, setApushTerms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [currentUnit, setCurrentUnit] = useState('all');
-  const [previousFilteredLength, setPreviousFilteredLength] = useState(0); // Track previous length
+  const [selectedUnits, setSelectedUnits] = useState(new Set()); // Changed from currentUnit to selectedUnits
+  const [previousFilteredLength, setPreviousFilteredLength] = useState(0);
   const [quizMode, setQuizMode] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [userAnswers, setUserAnswers] = useState({});
@@ -460,6 +462,9 @@ const App = () => {
       try {
         const terms = await loadTermsFromFile();
         setApushTerms(terms);
+        // Initialize with all units selected by default
+        const allUnits = new Set(terms.map(term => term.unit));
+        setSelectedUnits(allUnits);
       } catch (err) {
         setError('Failed to load terms.');
       } finally {
@@ -469,15 +474,20 @@ const App = () => {
     loadData();
   }, []);
 
-  const getFilteredTerms = () => currentUnit === 'all' ? apushTerms : apushTerms.filter(term => term.unit === parseInt(currentUnit));
+  // Updated filtering logic
+  const getFilteredTerms = () => {
+    if (selectedUnits.size === 0) return [];
+    return apushTerms.filter(term => selectedUnits.has(term.unit));
+  };
+  
   const getAvailableUnits = () => [...new Set(apushTerms.map(term => term.unit))].sort((a, b) => a - b);
 
-  // Smart preview navigation when unit changes
+  // Smart preview navigation when units change
   useEffect(() => {
     const filtered = getFilteredTerms();
     const currentFilteredLength = filtered.length;
     
-    // If we switched to a unit with fewer cards and current preview index is out of bounds
+    // If we switched to units with fewer cards and current preview index is out of bounds
     if (currentFilteredLength > 0 && previewIndex >= currentFilteredLength) {
       // Calculate the last valid page (groups of 4)
       const lastPageIndex = Math.floor(Math.max(0, currentFilteredLength - 1) / 4) * 4;
@@ -486,7 +496,29 @@ const App = () => {
     
     // Update the previous length for next comparison
     setPreviousFilteredLength(currentFilteredLength);
-  }, [currentUnit, apushTerms]); // Depend on currentUnit and apushTerms
+  }, [selectedUnits, apushTerms]); // Depend on selectedUnits and apushTerms
+
+  // Updated unit selection handlers
+  const toggleUnit = (unit) => {
+    setSelectedUnits(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(unit)) {
+        newSet.delete(unit);
+      } else {
+        newSet.add(unit);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllUnits = () => {
+    const allUnits = new Set(getAvailableUnits());
+    setSelectedUnits(allUnits);
+  };
+
+  const clearAllUnits = () => {
+    setSelectedUnits(new Set());
+  };
 
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
@@ -545,12 +577,6 @@ const App = () => {
     setPreviewIndex(0);
   };
 
-  // Enhanced unit change handler
-  const handleUnitChange = (newUnit) => {
-    setCurrentUnit(newUnit);
-    // The useEffect will handle the preview index adjustment
-  };
-
   const modeStyles = {
     who: { gradient: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700", text: "text-blue-100", subtext: "text-blue-200" },
     what: { gradient: "from-green-500 to-green-600 hover:from-green-600 hover:to-green-700", text: "text-green-100", subtext: "text-green-200" },
@@ -574,6 +600,17 @@ const App = () => {
   const availableUnits = getAvailableUnits();
   const filtered = getFilteredTerms();
   const currentTerm = filtered[currentQuestion];
+
+  // Helper function to get unit selection description
+  const getUnitSelectionDescription = () => {
+    if (selectedUnits.size === 0) return 'No units selected';
+    if (selectedUnits.size === availableUnits.length) return 'All units';
+    const sortedUnits = Array.from(selectedUnits).sort((a, b) => a - b);
+    if (sortedUnits.length <= 3) {
+      return `Unit${sortedUnits.length > 1 ? 's' : ''} ${sortedUnits.join(', ')}`;
+    }
+    return `${sortedUnits.length} units selected`;
+  };
 
   // Results page
   if (showResult) {
@@ -602,7 +639,8 @@ const App = () => {
                 <div className="text-sm text-gray-600">Duration</div>
               </div>
             </div>
-            <p className="text-gray-600 mb-6">You scored {totalScore.toFixed(1)} out of {totalPossibleScore} points</p>
+            <p className="text-gray-600 mb-2">You scored {totalScore.toFixed(1)} out of {totalPossibleScore} points</p>
+            <p className="text-sm text-gray-500 mb-6">From {getUnitSelectionDescription()}</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button onClick={resetQuiz} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
                 <RotateCcw className="w-5 h-5 mr-2" />Take Another Quiz
@@ -720,33 +758,58 @@ const App = () => {
           <p className="text-gray-600 text-lg">Master your AP US History terms with interactive quizzes</p>
         </div>
 
-        {/* Unit selector */}
+        {/* Enhanced Unit selector */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Select Unit</h2>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => handleUnitChange('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                currentUnit === 'all'
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              All Units ({apushTerms.length} terms)
-            </button>
-            {availableUnits.map(unit => (
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-800">Select Units</h2>
+            <div className="flex gap-2">
               <button
-                key={unit}
-                onClick={() => handleUnitChange(unit.toString())}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  currentUnit === unit.toString()
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                onClick={selectAllUnits}
+                className="text-sm px-3 py-1 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded-lg transition-colors flex items-center"
               >
-                Unit {unit} ({apushTerms.filter(term => term.unit === unit).length} terms)
+                <Check className="w-4 h-4 mr-1" />
+                All
               </button>
-            ))}
+              <button
+                onClick={clearAllUnits}
+                className="text-sm px-3 py-1 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors flex items-center"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Clear
+              </button>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-4">
+            {availableUnits.map(unit => {
+              const isSelected = selectedUnits.has(unit);
+              const unitTermCount = apushTerms.filter(term => term.unit === unit).length;
+              
+              return (
+                <button
+                  key={unit}
+                  onClick={() => toggleUnit(unit)}
+                  className={`px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <div>Unit {unit}</div>
+                  <div className={`text-xs ${isSelected ? 'text-indigo-200' : 'text-gray-500'}`}>
+                    {unitTermCount} terms
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          
+          <div className="text-center">
+            <div className="inline-flex items-center px-4 py-2 bg-gray-50 rounded-lg">
+              <span className="text-sm font-medium text-gray-700">
+                {getUnitSelectionDescription()} • {filtered.length} total terms
+              </span>
+            </div>
           </div>
         </div>
 
@@ -788,7 +851,7 @@ const App = () => {
           {filtered.length === 0 && (
             <div className="text-center text-gray-500 mt-4">
               <AlertCircle className="w-8 h-8 mx-auto mb-2" />
-              No terms available for the selected unit. Please select a different unit.
+              No terms available for the selected units. Please select at least one unit.
             </div>
           )}
         </div>
@@ -797,7 +860,7 @@ const App = () => {
         {filtered.length > 0 && (
           <div className="mt-6 bg-white rounded-lg shadow-lg p-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Preview Cards</h2>
-            <p className="text-gray-600 mb-4">Browse through the terms from your selected unit:</p>
+            <p className="text-gray-600 mb-4">Browse through the terms from your selected units:</p>
             
             {/* Navigation Controls */}
             <div className="flex justify-between items-center mb-4">
@@ -902,7 +965,7 @@ const App = () => {
         {/* Stats */}
         <div className="mt-6 text-center text-gray-500 text-sm">
           <Clock className="w-4 h-4 inline mr-1" />
-          Ready to quiz {filtered.length} terms from {currentUnit === 'all' ? 'all units' : `Unit ${currentUnit}`}
+          Ready to quiz {filtered.length} terms from {getUnitSelectionDescription().toLowerCase()}
         </div>
       </div>
     </div>
