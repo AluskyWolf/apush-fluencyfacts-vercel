@@ -1,11 +1,10 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navigation from './components/Navigation';
-import HomePage from './components/HomePage';
-import APUSHTerms from './pages/apushTerms';
-import WorldTerms from './pages/worldTerms';
-import EuroTerms from './pages/euroTerms';
 import './App.css';
+
+// Import the route configuration
+import { appRoutes } from './utils/routes';
 
 function App() {
   return (
@@ -13,10 +12,13 @@ function App() {
       <div className="App">
         <Navigation />
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/apush" element={<APUSHTerms />} />
-          <Route path="/ap-world" element={<WorldTerms />} />
-          <Route path="/ap-euro" element={<EuroTerms />} />
+          {appRoutes.map((route, index) => (
+            <Route
+              key={index}
+              path={route.path}
+              element={route.element}
+            />
+          ))}
         </Routes>
       </div>
     </Router>
