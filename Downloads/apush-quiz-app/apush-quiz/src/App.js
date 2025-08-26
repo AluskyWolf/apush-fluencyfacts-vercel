@@ -9,6 +9,8 @@ import {
   ArrowRight,
   RotateCcw
 } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 import termsData from './terms.js';
 
@@ -707,6 +709,8 @@ const App = () => {
   // Main menu
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <Analytics />
+      <SpeedInsights />
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
