@@ -67,12 +67,12 @@ const HomePage = () => {
               className="group bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 overflow-hidden"
             >
               <div className={`${subject.bgColor} p-8 text-center`}>
-                <div className="mb-4">
-                  {subject.icon}
-                </div>
-                <h3 className="text-2xl font-bold text-gray-800 mb-3">{subject.title}</h3>
-                <p className="text-gray-600 leading-relaxed">{subject.description}</p>
-              </div>
+  <div className="mb-4 flex justify-center">
+    {subject.icon}
+  </div>
+  <h3 className="text-2xl font-bold text-gray-800 mb-3">{subject.title}</h3>
+  <p className="text-gray-600 leading-relaxed">{subject.description}</p>
+</div>
               <div className={`bg-gradient-to-r ${subject.gradient} p-4 text-center`}>
                 <span className="text-white font-medium flex items-center justify-center">
                   Start Quiz
