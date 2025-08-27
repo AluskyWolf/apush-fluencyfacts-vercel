@@ -528,21 +528,14 @@ const [userAnswers, setUserAnswers] = useState({});
     setPreviewIndex(0);
   };
 
+   // Fixed modeStyles object - moved inside component
   const modeStyles = {
-  who: { gradient: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700", text: "text-blue-100", subtext: "text-blue-200" },
-  what: { gradient: "from-green-500 to-green-600 hover:from-green-600 hover:to-green-700", text: "text-green-100", subtext: "text-green-200" },
-  where: { gradient: "from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700", text: "text-yellow-100", subtext: "text-yellow-200" },
-  when: { gradient: "from-red-500 to-red-600 hover:from-red-600 hover:to-red-700", text: "text-red-100", subtext: "text-red-200" },
-  why: { gradient: "from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700", text: "text-indigo-100", subtext: "text-indigo-200" },
-  // New style for 'identification' mode
-  identification: {
-    who: { borderColor: "border-blue-500", focusColor: "focus:ring-blue-500", labelColor: "text-blue-600" },
-    what: { borderColor: "border-green-500", focusColor: "focus:ring-green-600", labelColor: "text-green-600" },
-    where: { borderColor: "border-yellow-500", focusColor: "focus:ring-yellow-500", labelColor: "text-yellow-600" },
-    when: { borderColor: "border-red-500", focusColor: "focus:ring-red-600", labelColor: "text-red-600" },
-    why: { borderColor: "border-indigo-500", focusColor: "focus:ring-indigo-600", labelColor: "text-indigo-600" },
-  }
-};
+    who: { gradient: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700", text: "text-blue-100", subtext: "text-blue-200" },
+    what: { gradient: "from-green-500 to-green-600 hover:from-green-600 hover:to-green-700", text: "text-green-100", subtext: "text-green-200" },
+    where: { gradient: "from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700", text: "text-yellow-100", subtext: "text-yellow-200" },
+    when: { gradient: "from-red-500 to-red-600 hover:from-red-600 hover:to-red-700", text: "text-red-100", subtext: "text-red-200" },
+    why: { gradient: "from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700", text: "text-indigo-100", subtext: "text-indigo-200" }
+  };
 
   if (loading) return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center">
