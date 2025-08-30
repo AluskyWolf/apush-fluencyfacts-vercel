@@ -10,12 +10,23 @@ import {
   RotateCcw,
   Check,
   X,
-  Globe, // Added a relevant icon for World History
+  Globe,
   Crown
 } from 'lucide-react';
 
 // This import is now for the AP World History terms
 import termsData from '../data/worldTerms.js'; 
+
+// Import the analytics functions
+import { 
+  trackQuizStart, 
+  trackQuizComplete, 
+  trackQuizAbandoned, 
+  trackUnitSelection, 
+  trackQuestionAnswer, 
+  trackError, 
+  trackUserEngagement 
+} from '../utils/analytics';
 
 // All the same helper functions as APUSH (reusing the same scoring logic)
 const calculateStringSimilarity = (str1, str2) => {
@@ -87,7 +98,6 @@ const normalizeAnswer = (text) => {
     .replace(/\s+/g, ' ')
     .trim();
 };
-// End of key changes
 
 const isNonAnswer = (text) => {
   const cleaned = text.toLowerCase().trim();
@@ -224,8 +234,7 @@ const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = [], fiel
   
   let finalScore = Math.max(termScore, wordScore, conceptualSimilarity);
   
-  // Start of key changes for AP World History
-  // Enhanced date matching
+  // Enhanced date matching for AP World History
   if (field === 'when') {
     const userHasDate = /\d+.*?(?:bce|ce|present|today)|\d{4}|\d+s|century/i.test(userOriginal);
     const correctHasDate = /\d+.*?(?:bce|ce|present|today)|\d{4}|\d+s|century/i.test(String(correctAnswer));
@@ -277,7 +286,6 @@ const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = [], fiel
       finalScore = Math.min(1, finalScore + 0.1);
     }
   }
-  // End of key changes
   
   let keywordBonus = 0;
   keywords.forEach(keyword => {
@@ -399,15 +407,76 @@ const loadTermsFromFile = async () => {
   }
 };
 
-const WorldTerms = () => { // Changed component name
-  const [worldTerms, setWorldTerms] = useState([]); // Changed state variable name
+// Quiz Results Component with Analytics
+const QuizResults = ({ subject, mode, questionScores, filtered, startTime, endTime, resetQuiz, startQuiz, getUnitSelectionDescription }) => {
+  const totalQuestions = filtered.length;
+  const totalPossibleScore = totalQuestions * (mode === 'identification' ? 5 : 1);
+  const totalScore = Object.values(questionScores).reduce((sum, score) => sum + score, 0);
+  const percentage = totalPossibleScore > 0 ? Math.round((totalScore / totalPossibleScore) * 100) : 0;
+  const duration = endTime && startTime ? Math.round((endTime - startTime) / 1000) : 0;
+
+  // Track quiz completion once when the component mounts
+  useEffect(() => {
+    trackQuizComplete(subject, mode, percentage, duration, totalQuestions);
+  }, []); // Empty dependency array ensures this runs only once
+
+  return (
+    <div className="p-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+          <div className="flex items-center justify-center mb-4">
+            <Globe className="w-8 h-8 text-green-600 mr-2" />
+            <h2 className="text-3xl font-bold text-gray-800">Quiz Complete!</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-green-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{percentage}%</div>
+              <div className="text-sm text-gray-600">Final Score</div>
+            </div>
+            <div className="bg-teal-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-teal-600">{totalQuestions}</div>
+              <div className="text-sm text-gray-600">Questions</div>
+            </div>
+            <div className="bg-lime-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-lime-600">{duration}s</div>
+              <div className="text-sm text-gray-600">Duration</div>
+            </div>
+          </div>
+          <p className="text-gray-600 mb-2">You scored {totalScore.toFixed(1)} out of {totalPossibleScore} points</p>
+          <p className="text-sm text-gray-500 mb-6">From {getUnitSelectionDescription()}</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button 
+              onClick={() => {
+                trackUserEngagement('take_another_quiz', subject);
+                resetQuiz();
+              }} 
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
+              <RotateCcw className="w-5 h-5 mr-2" />Take Another Quiz
+            </button>
+            <button 
+              onClick={() => {
+                trackUserEngagement('retry_same_quiz', subject, { mode, previousScore: percentage });
+                startQuiz(mode);
+              }} 
+              className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+              Retry Same Quiz
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const WorldTerms = () => {
+  const [worldTerms, setWorldTerms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedUnits, setSelectedUnits] = useState(new Set());
   const [previousFilteredLength, setPreviousFilteredLength] = useState(0);
   const [quizMode, setQuizMode] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
-const [userAnswers, setUserAnswers] = useState({});
+  const [userAnswers, setUserAnswers] = useState({});
   const [showFeedback, setShowFeedback] = useState(false);
   const [questionScores, setQuestionScores] = useState({});
   const [showResult, setShowResult] = useState(false);
@@ -419,11 +488,13 @@ const [userAnswers, setUserAnswers] = useState({});
     const loadData = async () => {
       try {
         const terms = await loadTermsFromFile();
-        setWorldTerms(terms); // Updated state variable
+        setWorldTerms(terms);
         const allUnits = new Set(terms.map(term => term.unit));
         setSelectedUnits(allUnits);
       } catch (err) {
-        setError('Failed to load AP World History terms.'); // Updated error message
+        // Track data loading errors
+        trackError('data_load_error', err.message, 'world', 'loadTermsFromFile');
+        setError('Failed to load AP World History terms.');
       } finally {
         setLoading(false);
       }
@@ -433,10 +504,10 @@ const [userAnswers, setUserAnswers] = useState({});
 
   const getFilteredTerms = () => {
     if (selectedUnits.size === 0) return [];
-    return worldTerms.filter(term => selectedUnits.has(term.unit)); // Updated state variable
+    return worldTerms.filter(term => selectedUnits.has(term.unit));
   };
   
-  const getAvailableUnits = () => [...new Set(worldTerms.map(term => term.unit))].sort((a, b) => a - b); // Updated state variable
+  const getAvailableUnits = () => [...new Set(worldTerms.map(term => term.unit))].sort((a, b) => a - b);
 
   useEffect(() => {
     const filtered = getFilteredTerms();
@@ -448,7 +519,7 @@ const [userAnswers, setUserAnswers] = useState({});
     }
     
     setPreviousFilteredLength(currentFilteredLength);
-  }, [selectedUnits, worldTerms]); // Updated dependency
+  }, [selectedUnits, worldTerms]);
 
   const toggleUnit = (unit) => {
     setSelectedUnits(prev => {
@@ -458,6 +529,11 @@ const [userAnswers, setUserAnswers] = useState({});
       } else {
         newSet.add(unit);
       }
+
+      // Track unit selection changes
+      const availableUnits = getAvailableUnits();
+      trackUnitSelection('world', Array.from(newSet), availableUnits.length);
+      
       return newSet;
     });
   };
@@ -465,15 +541,25 @@ const [userAnswers, setUserAnswers] = useState({});
   const selectAllUnits = () => {
     const allUnits = new Set(getAvailableUnits());
     setSelectedUnits(allUnits);
+    
+    // Track unit selection
+    trackUnitSelection('world', Array.from(allUnits), allUnits.size);
   };
 
   const clearAllUnits = () => {
     setSelectedUnits(new Set());
+    
+    // Track unit selection
+    trackUnitSelection('world', [], getAvailableUnits().length);
   };
 
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
+
+    // Track quiz start event
+    trackQuizStart('world', mode, selectedUnits.size, filtered.length);
+
     setQuizMode(mode);
     setCurrentQuestion(0);
     setUserAnswers({});
@@ -494,13 +580,18 @@ const [userAnswers, setUserAnswers] = useState({});
     const currentTerm = filtered[currentQuestion];
     const scores = {};
     const fields = quizMode === 'identification' ? ['who', 'what', 'where', 'when', 'why'] : [quizMode];
+    
     fields.forEach(field => {
       const key = `${currentQuestion}-${field}`;
       const userAnswer = userAnswers[key] || '';
       const correctAnswer = currentTerm[field] || '';
       const score = calculateSimilarityScore(userAnswer, correctAnswer, currentTerm.keywords, field);
       scores[key] = score;
+
+      // Track individual question answers
+      trackQuestionAnswer('world', field, score, currentQuestion + 1);
     });
+
     setQuestionScores(prev => ({ ...prev, ...scores }));
     setShowFeedback(true);
   };
@@ -517,6 +608,12 @@ const [userAnswers, setUserAnswers] = useState({});
   };
 
   const resetQuiz = () => {
+    // Track quiz abandonment if a quiz was in progress
+    if (quizMode && !showResult) {
+      const filtered = getFilteredTerms();
+      trackQuizAbandoned('world', quizMode, currentQuestion + 1, filtered.length);
+    }
+
     setQuizMode(null);
     setCurrentQuestion(0);
     setUserAnswers({});
@@ -528,7 +625,7 @@ const [userAnswers, setUserAnswers] = useState({});
     setPreviewIndex(0);
   };
 
-   // Fixed modeStyles object - moved inside component
+  // Fixed modeStyles object - moved inside component
   const modeStyles = {
     who: { gradient: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700", text: "text-blue-100", subtext: "text-blue-200" },
     what: { gradient: "from-green-500 to-green-600 hover:from-green-600 hover:to-green-700", text: "text-green-100", subtext: "text-green-200" },
@@ -563,49 +660,20 @@ const [userAnswers, setUserAnswers] = useState({});
     return `${sortedUnits.length} units selected`;
   };
 
-  // Results page
+  // Use the new Results component
   if (showResult) {
-    const totalQuestions = filtered.length;
-    const totalPossibleScore = totalQuestions * (quizMode === 'identification' ? 5 : 1);
-    const totalScore = Object.values(questionScores).reduce((sum, score) => sum + score, 0);
-    const percentage = Math.round((totalScore / totalPossibleScore) * 100);
-    const duration = endTime && startTime ? Math.round((endTime - startTime) / 1000) : 0;
-
     return (
-      <div className="p-4">
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-            <div className="flex items-center justify-center mb-4">
-              <Globe className="w-8 h-8 text-green-600 mr-2" />
-              <h2 className="text-3xl font-bold text-gray-800">Quiz Complete!</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-green-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">{percentage}%</div>
-                <div className="text-sm text-gray-600">Final Score</div>
-              </div>
-              <div className="bg-teal-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-teal-600">{totalQuestions}</div>
-                <div className="text-sm text-gray-600">Questions</div>
-              </div>
-              <div className="bg-lime-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-lime-600">{duration}s</div>
-                <div className="text-sm text-gray-600">Duration</div>
-              </div>
-            </div>
-            <p className="text-gray-600 mb-2">You scored {totalScore.toFixed(1)} out of {totalPossibleScore} points</p>
-            <p className="text-sm text-gray-500 mb-6">From {getUnitSelectionDescription()}</p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <button onClick={resetQuiz} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
-                <RotateCcw className="w-5 h-5 mr-2" />Take Another Quiz
-              </button>
-              <button onClick={() => startQuiz(quizMode)} className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
-                Retry Same Quiz
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <QuizResults
+        subject="world"
+        mode={quizMode}
+        questionScores={questionScores}
+        filtered={filtered}
+        startTime={startTime}
+        endTime={endTime}
+        resetQuiz={resetQuiz}
+        startQuiz={startQuiz}
+        getUnitSelectionDescription={getUnitSelectionDescription}
+      />
     );
   }
 
@@ -619,7 +687,12 @@ const [userAnswers, setUserAnswers] = useState({});
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-lg shadow-lg p-6">
             <div className="flex justify-between items-center mb-4">
-              <button onClick={resetQuiz} className="text-gray-600 hover:text-gray-800 flex items-center transition-colors">
+              <button 
+                onClick={() => {
+                  trackUserEngagement('quiz_back_to_menu', 'world');
+                  resetQuiz();
+                }} 
+                className="text-gray-600 hover:text-gray-800 flex items-center transition-colors">
                 <ArrowLeft className="w-5 h-5 mr-1" />Back to Menu
               </button>
               <span className="text-sm text-gray-500">Question {currentQuestion + 1} of {filtered.length}</span>
@@ -633,30 +706,28 @@ const [userAnswers, setUserAnswers] = useState({});
 
             <div className="space-y-4">
               {fields.map(field => {
-    const key = `${currentQuestion}-${field}`;
-    const userAnswer = userAnswers[key] || '';
-    const score = questionScores[key];
-    const fieldLabels = { who: 'Who', what: 'What', where: 'Where', when: 'When', why: 'Why/Significance' };
-    const scoreLevel = showFeedback ? getScoreLevel(score, userAnswer, field) : null;
-    
-    // Get the dynamic styles for the field
-    const fieldStyles = quizMode === 'identification'
-        ? modeStyles.identification[field]
-        : { borderColor: 'border-gray-300', focusColor: 'focus:ring-green-500', labelColor: 'text-gray-700' };
+                const key = `${currentQuestion}-${field}`;
+                const userAnswer = userAnswers[key] || '';
+                const score = questionScores[key];
+                const fieldLabels = { who: 'Who', what: 'What', where: 'Where', when: 'When', why: 'Why/Significance' };
+                const scoreLevel = showFeedback ? getScoreLevel(score, userAnswer, field) : null;
+                
+                // Get the dynamic styles for the field
+                const fieldStyles = modeStyles[field] || { borderColor: 'border-gray-300', focusColor: 'focus:ring-green-500', labelColor: 'text-gray-700' };
 
-    return (
-        <div key={field} className="space-y-2">
-            <label className={`block text-sm font-medium ${fieldStyles.labelColor}`}>
-                {fieldLabels[field]}:
-            </label>
-            <textarea
-                value={userAnswer}
-                onChange={(e) => handleAnswer(field, e.target.value)}
-                className={`w-full px-3 py-2 border ${fieldStyles.borderColor} rounded-lg focus:ring-2 ${fieldStyles.focusColor} focus:border-transparent resize-none`}
-                rows={3}
-                placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
-                disabled={showFeedback}
-            />
+                return (
+                  <div key={field} className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      {fieldLabels[field]}:
+                    </label>
+                    <textarea
+                      value={userAnswer}
+                      onChange={(e) => handleAnswer(field, e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
+                      rows={3}
+                      placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
+                      disabled={showFeedback}
+                    />
                     {showFeedback && scoreLevel && (
                       <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: scoreLevel.bgColor }}>
                         <div className="flex items-center justify-between mb-2">
@@ -684,11 +755,16 @@ const [userAnswers, setUserAnswers] = useState({});
             <div className="flex justify-between mt-6">
               <div></div>
               {!showFeedback ? (
-                <button onClick={submitAnswer} disabled={fields.every(field => !userAnswers[`${currentQuestion}-${field}`])} className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-medium transition-colors">
+                <button 
+                  onClick={submitAnswer} 
+                  disabled={fields.every(field => !userAnswers[`${currentQuestion}-${field}`])} 
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-medium transition-colors">
                   Submit Answer
                 </button>
               ) : (
-                <button onClick={nextQuestion} className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center">
+                <button 
+                  onClick={nextQuestion} 
+                  className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center">
                   {currentQuestion < filtered.length - 1 ? 'Next Question' : 'View Results'}
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </button>
@@ -718,14 +794,20 @@ const [userAnswers, setUserAnswers] = useState({});
             <h2 className="text-xl font-semibold text-gray-800">Select Units</h2>
             <div className="flex gap-2">
               <button
-                onClick={selectAllUnits}
+                onClick={() => {
+                  trackUserEngagement('select_all_units', 'world');
+                  selectAllUnits();
+                }}
                 className="text-sm px-3 py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg transition-colors flex items-center"
               >
                 <Check className="w-4 h-4 mr-1" />
                 All
               </button>
               <button
-                onClick={clearAllUnits}
+                onClick={() => {
+                  trackUserEngagement('clear_all_units', 'world');
+                  clearAllUnits();
+                }}
                 className="text-sm px-3 py-1 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors flex items-center"
               >
                 <X className="w-4 h-4 mr-1" />
@@ -772,7 +854,10 @@ const [userAnswers, setUserAnswers] = useState({});
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Choose Quiz Mode</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <button
-              onClick={() => startQuiz('identification')}
+              onClick={() => {
+                trackUserEngagement('quiz_mode_selected', 'world', { mode: 'identification' });
+                startQuiz('identification');
+              }}
               disabled={filtered.length === 0}
               className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100"
             >
@@ -780,18 +865,20 @@ const [userAnswers, setUserAnswers] = useState({});
                 <Globe className="w-6 h-6 mr-2" />
                 <span className="text-xl">Full Identification</span>
               </div>
-              <div className="text-green-100 text-sm">Answer all 5 W's for each term</div>
+              <div className="text-purple-100 text-sm">Answer all 5 W's for each term</div>
             </button>
 
             {Object.entries(modeStyles).map(([mode, styles]) => (
               <button
                 key={mode}
-                onClick={() => startQuiz(mode)}
+                onClick={() => {
+                  trackUserEngagement('quiz_mode_selected', 'world', { mode });
+                  startQuiz(mode);
+                }}
                 disabled={filtered.length === 0}
                 className={`bg-gradient-to-r ${styles.gradient} disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100`}
               >
                 <div className="text-xl mb-2">
-                  {/* Updated Emojis */}
                   {mode === 'who' && '👤'} 
                   {mode === 'what' && '📖'} 
                   {mode === 'where' && '🗺️'} 
@@ -823,7 +910,10 @@ const [userAnswers, setUserAnswers] = useState({});
             {/* Navigation Controls */}
             <div className="flex justify-between items-center mb-4">
               <button 
-                onClick={() => setPreviewIndex(Math.max(0, previewIndex - 4))}
+                onClick={() => {
+                  trackUserEngagement('preview_navigation', 'world', { action: 'previous' });
+                  setPreviewIndex(Math.max(0, previewIndex - 4));
+                }}
                 disabled={previewIndex === 0}
                 className="flex items-center px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 rounded-lg transition-colors"
               >
@@ -839,7 +929,10 @@ const [userAnswers, setUserAnswers] = useState({});
                   {Array.from({ length: Math.ceil(filtered.length / 4) }).map((_, pageIndex) => (
                     <button
                       key={pageIndex}
-                      onClick={() => setPreviewIndex(pageIndex * 4)}
+                      onClick={() => {
+                        trackUserEngagement('preview_navigation', 'world', { action: 'page_jump', page: pageIndex + 1 });
+                        setPreviewIndex(pageIndex * 4);
+                      }}
                       className={`w-2 h-2 rounded-full transition-colors ${
                         Math.floor(previewIndex / 4) === pageIndex 
                           ? 'bg-green-600' 
@@ -851,7 +944,10 @@ const [userAnswers, setUserAnswers] = useState({});
               </div>
               
               <button 
-                onClick={() => setPreviewIndex(Math.min(filtered.length - 4, previewIndex + 4))}
+                onClick={() => {
+                  trackUserEngagement('preview_navigation', 'world', { action: 'next' });
+                  setPreviewIndex(Math.min(filtered.length - 4, previewIndex + 4));
+                }}
                 disabled={previewIndex + 4 >= filtered.length}
                 className="flex items-center px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 rounded-lg transition-colors"
               >
@@ -903,7 +999,6 @@ const [userAnswers, setUserAnswers] = useState({});
                         <span className="text-gray-700 ml-1">{term.why.length > 60 ? `${term.why.substring(0, 60)}...` : term.why}</span>
                       </div>
                     )}
-                    )}
                   </div>
                 </div>
               ))}
@@ -912,7 +1007,10 @@ const [userAnswers, setUserAnswers] = useState({});
             {/* Quick Jump to Random Cards */}
             <div className="mt-4 text-center">
               <button 
-                onClick={() => setPreviewIndex(Math.floor(Math.random() * Math.max(1, filtered.length - 3)) / 4 * 4)}
+                onClick={() => {
+                  trackUserEngagement('preview_navigation', 'world', { action: 'random' });
+                  setPreviewIndex(Math.floor(Math.random() * Math.max(1, filtered.length - 3)) / 4 * 4);
+                }}
                 className="text-sm text-green-600 hover:text-green-800 transition-colors"
               >
                 Show Random Cards

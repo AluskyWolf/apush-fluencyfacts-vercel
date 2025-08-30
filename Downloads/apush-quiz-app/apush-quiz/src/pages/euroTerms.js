@@ -1,19 +1,12 @@
+// src/pages/euroTerms.js
+
 import React, { useState, useEffect } from 'react';
 import {
-  BookOpen,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  ArrowLeft,
-  ArrowRight,
-  RotateCcw,
-  Check,
-  X,
-  Crown
+  BookOpen, Clock, CheckCircle, XCircle, AlertCircle, ArrowLeft, ArrowRight, RotateCcw, Check, X, Crown
 } from 'lucide-react';
-
-import termsData from '../data/euroTerms.js'; // European History terms data
+import termsData from '../data/euroTerms.js';
+// Import the new analytics functions
+import { trackQuizStart, trackQuizComplete, trackQuizAbandoned, trackUnitSelection, trackQuestionAnswer, trackError, trackUserEngagement } from '../utils/analytics';
 
 // All the same helper functions as APUSH (reusing the same scoring logic)
 const calculateStringSimilarity = (str1, str2) => {
@@ -396,6 +389,68 @@ const loadTermsFromFile = async () => {
   }
 };
 
+// To correctly handle the quiz completion event, we extract the results page into its own component.
+// This allows us to use the useEffect hook safely.
+const QuizResults = ({ subject, mode, questionScores, filtered, startTime, endTime, resetQuiz, startQuiz, getUnitSelectionDescription }) => {
+  const totalQuestions = filtered.length;
+  const totalPossibleScore = totalQuestions * (mode === 'identification' ? 5 : 1);
+  const totalScore = Object.values(questionScores).reduce((sum, score) => sum + score, 0);
+  const percentage = totalPossibleScore > 0 ? Math.round((totalScore / totalPossibleScore) * 100) : 0;
+  const duration = endTime && startTime ? Math.round((endTime - startTime) / 1000) : 0;
+
+  // Track quiz completion once when the component mounts
+  useEffect(() => {
+    trackQuizComplete(subject, mode, percentage, duration, totalQuestions);
+  }, []); // Empty dependency array ensures this runs only once
+
+  return (
+    <div className="p-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+          <div className="flex items-center justify-center mb-4">
+            <Crown className="w-8 h-8 text-purple-600 mr-2" />
+            <h2 className="text-3xl font-bold text-gray-800">Quiz Complete!</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-purple-600">{percentage}%</div>
+              <div className="text-sm text-gray-600">Final Score</div>
+            </div>
+            <div className="bg-violet-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-violet-600">{totalQuestions}</div>
+              <div className="text-sm text-gray-600">Questions</div>
+            </div>
+            <div className="bg-indigo-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-indigo-600">{duration}s</div>
+              <div className="text-sm text-gray-600">Duration</div>
+            </div>
+          </div>
+          <p className="text-gray-600 mb-2">You scored {totalScore.toFixed(1)} out of {totalPossibleScore} points</p>
+          <p className="text-sm text-gray-500 mb-6">From {getUnitSelectionDescription()}</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button 
+              onClick={() => {
+                trackUserEngagement('take_another_quiz', subject);
+                resetQuiz();
+              }} 
+              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
+              <RotateCcw className="w-5 h-5 mr-2" />Take Another Quiz
+            </button>
+            <button 
+              onClick={() => {
+                trackUserEngagement('retry_same_quiz', subject, { mode, previousScore: percentage });
+                startQuiz(mode);
+              }} 
+              className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+              Retry Same Quiz
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const EUROTerms = () => {
   const [EUROTerms, setEUROTerms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -420,6 +475,8 @@ const EUROTerms = () => {
         const allUnits = new Set(terms.map(term => term.unit));
         setSelectedUnits(allUnits);
       } catch (err) {
+        // Track data loading errors
+        trackError('data_load_error', err.message, 'euro', 'loadTermsFromFile');
         setError('Failed to load European History terms.');
       } finally {
         setLoading(false);
@@ -455,6 +512,11 @@ const EUROTerms = () => {
       } else {
         newSet.add(unit);
       }
+      
+      // Track unit selection changes
+      const availableUnits = getAvailableUnits();
+      trackUnitSelection('euro', Array.from(newSet), availableUnits.length);
+      
       return newSet;
     });
   };
@@ -471,6 +533,10 @@ const EUROTerms = () => {
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
+
+    // Track quiz start event
+    trackQuizStart('euro', mode, selectedUnits.size, filtered.length);
+
     setQuizMode(mode);
     setCurrentQuestion(0);
     setUserAnswers({});
@@ -491,13 +557,18 @@ const EUROTerms = () => {
     const currentTerm = filtered[currentQuestion];
     const scores = {};
     const fields = quizMode === 'identification' ? ['who', 'what', 'where', 'when', 'why'] : [quizMode];
+    
     fields.forEach(field => {
       const key = `${currentQuestion}-${field}`;
       const userAnswer = userAnswers[key] || '';
       const correctAnswer = currentTerm[field] || '';
       const score = calculateSimilarityScore(userAnswer, correctAnswer, currentTerm.keywords, field);
       scores[key] = score;
+
+      // Track individual question answers
+      trackQuestionAnswer('euro', field, score, currentQuestion + 1);
     });
+
     setQuestionScores(prev => ({ ...prev, ...scores }));
     setShowFeedback(true);
   };
@@ -514,6 +585,12 @@ const EUROTerms = () => {
   };
 
   const resetQuiz = () => {
+    // Track quiz abandonment if a quiz was in progress
+    if (quizMode && !showResult) {
+      const filtered = getFilteredTerms();
+      trackQuizAbandoned('euro', quizMode, currentQuestion + 1, filtered.length);
+    }
+
     setQuizMode(null);
     setCurrentQuestion(0);
     setUserAnswers({});
@@ -559,49 +636,20 @@ const EUROTerms = () => {
     return `${sortedUnits.length} units selected`;
   };
 
-  // Results page
+  // Use the new Results component
   if (showResult) {
-    const totalQuestions = filtered.length;
-    const totalPossibleScore = totalQuestions * (quizMode === 'identification' ? 5 : 1);
-    const totalScore = Object.values(questionScores).reduce((sum, score) => sum + score, 0);
-    const percentage = Math.round((totalScore / totalPossibleScore) * 100);
-    const duration = endTime && startTime ? Math.round((endTime - startTime) / 1000) : 0;
-
     return (
-      <div className="p-4">
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-            <div className="flex items-center justify-center mb-4">
-              <Crown className="w-8 h-8 text-purple-600 mr-2" />
-              <h2 className="text-3xl font-bold text-gray-800">Quiz Complete!</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-purple-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600">{percentage}%</div>
-                <div className="text-sm text-gray-600">Final Score</div>
-              </div>
-              <div className="bg-violet-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-violet-600">{totalQuestions}</div>
-                <div className="text-sm text-gray-600">Questions</div>
-              </div>
-              <div className="bg-indigo-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-indigo-600">{duration}s</div>
-                <div className="text-sm text-gray-600">Duration</div>
-              </div>
-            </div>
-            <p className="text-gray-600 mb-2">You scored {totalScore.toFixed(1)} out of {totalPossibleScore} points</p>
-            <p className="text-sm text-gray-500 mb-6">From {getUnitSelectionDescription()}</p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <button onClick={resetQuiz} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
-                <RotateCcw className="w-5 h-5 mr-2" />Take Another Quiz
-              </button>
-              <button onClick={() => startQuiz(quizMode)} className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
-                Retry Same Quiz
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <QuizResults
+        subject="euro"
+        mode={quizMode}
+        questionScores={questionScores}
+        filtered={filtered}
+        startTime={startTime}
+        endTime={endTime}
+        resetQuiz={resetQuiz}
+        startQuiz={startQuiz}
+        getUnitSelectionDescription={getUnitSelectionDescription}
+      />
     );
   }
 
