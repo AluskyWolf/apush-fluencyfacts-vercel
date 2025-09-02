@@ -909,40 +909,40 @@ const EUROTerms = () => {
                   </div>
                   
                   <div className="space-y-2 text-sm">
-                    {term.who && (
-                      <div>
-                        <span className="font-medium text-blue-700">Who:</span>
-                        <span className="text-gray-700 ml-1">{term.who.length > 60 ? `${term.who.substring(0, 60)}...` : term.who}</span>
-                      </div>
-                    )}
-                    {term.what && (
-                      <div>
-                        <span className="font-medium text-green-700">What:</span>
-                        <span className="text-gray-700 ml-1">{term.what.length > 60 ? `${term.what.substring(0, 60)}...` : term.what}</span>
-                      </div>
-                    )}
-                    {term.where && (
-                      <div>
-                        <span className="font-medium text-yellow-700">Where:</span>
-                        <span className="text-gray-700 ml-1">{term.where.length > 60 ? `${term.where.substring(0, 60)}...` : term.where}</span>
-                      </div>
-                    )}
-                    {term.when && (
-                      <div>
-                        <span className="font-medium text-red-700">When:</span>
-                        <span className="text-gray-700 ml-1">{term.when.length > 60 ? `${term.when.substring(0, 60)}...` : term.when}</span>
-                      </div>
-                    )}
-                    {term.why && (
-                      <div>
-                        <span className="font-medium text-indigo-700">Why:</span>
-                        <span className="text-gray-700 ml-1">{term.why.length > 60 ? `${term.why.substring(0, 60)}...` : term.why}</span>
-                      </div>
-                    )}
+                   {term.who && (
+                        <div>
+                          <span className="font-medium text-blue-700">Who:</span>
+                          <span className="text-gray-700 ml-1">{term.who}</span>
+                        </div>
+                      )}
+                      {term.what && (
+                        <div>
+                          <span className="font-medium text-green-700">What:</span>
+                          <span className="text-gray-700 ml-1">{term.what}</span>
+                        </div>
+                      )}
+                      {term.where && (
+                        <div>
+                          <span className="font-medium text-yellow-700">Where:</span>
+                          <span className="text-gray-700 ml-1">{term.where}</span>
+                        </div>
+                      )}
+                      {term.when && (
+                        <div>
+                          <span className="font-medium text-red-700">When:</span>
+                          <span className="text-gray-700 ml-1">{term.when}</span>
+                        </div>
+                      )}
+                      {term.why && (
+                        <div>
+                          <span className="font-medium text-indigo-700">Why:</span>
+                          <span className="text-gray-700 ml-1">{term.why}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
             
             {/* Quick Jump to Random Cards */}
             <div className="mt-4 text-center">
