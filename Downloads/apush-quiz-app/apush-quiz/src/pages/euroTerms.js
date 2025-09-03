@@ -8,39 +8,7 @@ import termsData from '../data/euroTerms.js';
 // Import the new analytics functions
 import { trackQuizStart, trackQuizComplete, trackQuizAbandoned, trackUnitSelection, trackQuestionAnswer, trackError, trackUserEngagement } from '../utils/analytics';
 
-// All the same helper functions as APUSH (reusing the same scoring logic)
-const calculateStringSimilarity = (str1, str2) => {
-  if (str1 === str2) return 1;
-  const len1 = str1.length;
-  const len2 = str2.length;
-  if (len1 === 0) return len2 === 0 ? 1 : 0;
-  if (len2 === 0) return 0;
-  const matrix = Array(len2 + 1).fill().map(() => Array(len1 + 1).fill(0));
-  for (let i = 0; i <= len1; i++) matrix[0][i] = i;
-  for (let j = 0; j <= len2; j++) matrix[j][0] = j;
-  for (let j = 1; j <= len2; j++) {
-    for (let i = 1; i <= len1; i++) {
-      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-      matrix[j][i] = Math.min(
-        matrix[j - 1][i] + 1,
-        matrix[j][i - 1] + 1,
-        matrix[j - 1][i - 1] + cost
-      );
-    }
-  }
-  const maxLen = Math.max(len1, len2);
-  return (maxLen - matrix[len2][len1]) / maxLen;
-};
-
-const defaultCompare = (a = '', b = '') => {
-  const aNorm = a.trim().toLowerCase();
-  const bNorm = b.trim().toLowerCase();
-  if (!aNorm || !bNorm) return 0;
-  if (aNorm === bNorm) return 1;
-  if (aNorm.includes(bNorm) || bNorm.includes(aNorm)) return 0.85;
-  return calculateStringSimilarity(aNorm, bNorm);
-};
-
+// String Similarity Helper Functions
 const extractKeywords = (term = {}) => {
   if (Array.isArray(term.keywords) && term.keywords.length) return term.keywords;
   const text = `${term.term || ''} ${term.who || ''} ${term.what || ''} ${term.where || ''} ${term.when || ''} ${term.why || ''}`.toLowerCase();
@@ -48,330 +16,11 @@ const extractKeywords = (term = {}) => {
   return Array.from(new Set(words)).slice(0, 10);
 };
 
-const normalizeAnswer = (text) => {
-  return text.toLowerCase().trim()
-    // Normalize common date abbreviations
-    .replace(/\bbce?\b/g, 'bc')
-    .replace(/\bce\b/g, 'ad')
-    .replace(/\bad\b/g, 'ad')
-    // Normalize time references
-    .replace(/\btoday\b/g, 'present')
-    .replace(/\bnow\b/g, 'present')
-    .replace(/\bcurrent\b/g, 'present')
-    .replace(/\bpresent day\b/g, 'present')
-    // European History specific normalizations
-    .replace(/\bmiddle ages\b/g, 'medieval period')
-    .replace(/\bdark ages\b/g, 'medieval period')
-    .replace(/\brenaissance\b/g, 'renaissance period')
-    .replace(/\breformation\b/g, 'reformation period')
-    .replace(/\bcounter-reformation\b/g, 'counter reformation')
-    .replace(/\benlightenment\b/g, 'enlightenment period')
-    .replace(/\bindustrial revolution\b/g, 'industrial period')
-    .replace(/\bfrench revolution\b/g, 'french revolutionary period')
-    .replace(/\bnapoleonic era\b/g, 'napoleonic period')
-    // Geographic normalizations
-    .replace(/\bholy roman empire\b/g, 'hre')
-    .replace(/\bbyzantine empire\b/g, 'byzantium')
-    .replace(/\bottoman empire\b/g, 'ottoman')
-    .replace(/\bhabsburg\b/g, 'habsburg dynasty')
-    .replace(/\bbourbons\b/g, 'bourbon dynasty')
-    // Remove extra spacing
-    .replace(/\s+/g, ' ')
-    .trim();
-};
-
-const isNonAnswer = (text) => {
-  const cleaned = text.toLowerCase().trim();
-  
-  if (!cleaned || cleaned.length === 0) return true;
-  
-  const nonAnswers = [
-    'idk', "i don't know", 'dont know', "don't know", 'dk', 'dunno',
-    'i dunno', 'no idea', 'not sure', '???', '?', 'unknown', 'n/a', 'na',
-    'nothing', 'none', 'blank', 'empty', 'skip', 'pass', 'help', 'uhh',
-    'umm', 'uh', 'um', 'err', 'erm', 'hmm', 'hm'
-  ];
-  
-  if (nonAnswers.includes(cleaned)) return true;
-  if (cleaned.length === 1 && !/^[a-z]$/i.test(cleaned)) return true;
-  if (/^[^\w\s]*$/.test(cleaned)) return true;
-  if (/^(.)\1{2,}$/.test(cleaned)) return true;
-  
-  return false;
-};
-
-const meetsMinimumRequirements = (userAnswer, field, correctAnswer) => {
-  const cleaned = userAnswer.toLowerCase().trim();
-  const correctLength = String(correctAnswer).length;
-  
-  if (cleaned.length < 2) return false;
-  
-  switch (field) {
-    case 'who':
-      if (cleaned.length < 3) return false;
-      if (cleaned.length === 1) return false;
-      break;
-    case 'what':
-      if (cleaned.length < 4) return false;
-      break;
-    case 'where':
-      if (cleaned.length < 3) return false;
-      if (cleaned.length === 1) return false;
-      break;
-    case 'when':
-      if (cleaned.length < 2) return false;
-      if (/^\d$/.test(cleaned)) return false;
-      break;
-    case 'why':
-      if (cleaned.length < 8) return false;
-      break;
-    default:
-      if (cleaned.length < 3) return false;
-  }
-  
-  if (correctLength > 30 && cleaned.length < 8) return false;
-  if (correctLength > 50 && cleaned.length < 12) return false;
-  if (!/[a-zA-Z]/.test(cleaned)) return false;
-  
-  return true;
-};
-
-const calculateSimilarityScore = (userAnswer, correctAnswer, keywords = [], field = null) => {
-  if (!userAnswer || !correctAnswer) return 0;
-  
-  const userOriginal = String(userAnswer).trim();
-  const userNormalized = normalizeAnswer(userOriginal);
-  const correctNormalized = normalizeAnswer(String(correctAnswer));
-  
-  if (isNonAnswer(userOriginal)) return 0;
-  
-  if (!meetsMinimumRequirements(userOriginal, field, correctAnswer)) {
-    const hasRelevantWord = keywords.some(keyword => 
-      userNormalized.includes(keyword.toLowerCase())
-    );
-    return hasRelevantWord ? 0.1 : 0;
-  }
-  
-  if (userNormalized === correctNormalized) return 1;
-  
-  const conceptualSimilarity = defaultCompare(userNormalized, correctNormalized);
-  if (conceptualSimilarity >= 0.85) return Math.min(1, conceptualSimilarity + 0.1);
-  
-  const userTerms = userNormalized.split(/[,;&\-]+/).map(term => term.trim()).filter(term => term.length > 0);
-  const correctTerms = correctNormalized.split(/[,;&\-]+/).map(term => term.trim()).filter(term => term.length > 0);
-  
-  const userWords = userNormalized.split(/\W+/).filter(word => word.length > 2);
-  const correctWords = correctNormalized.split(/\W+/).filter(word => word.length > 2);
-  
-  if (correctTerms.length === 0 && correctWords.length === 0) return 0;
-  
-  let termScore = 0;
-  if (correctTerms.length > 0) {
-    let matchedCorrectTerms = 0;
-    let totalTermSimilarity = 0;
-    
-    correctTerms.forEach(correctTerm => {
-      let bestMatchScore = 0;
-      userTerms.forEach(userTerm => {
-        const similarity = defaultCompare(userTerm, correctTerm);
-        bestMatchScore = Math.max(bestMatchScore, similarity);
-      });
-      
-      if (bestMatchScore >= 0.6) {
-        matchedCorrectTerms++;
-        totalTermSimilarity += bestMatchScore;
-      }
-    });
-    
-    if (matchedCorrectTerms > 0) {
-      const avgTermSimilarity = totalTermSimilarity / matchedCorrectTerms;
-      termScore = (matchedCorrectTerms / correctTerms.length) * avgTermSimilarity;
-    }
-  }
-  
-  let wordScore = 0;
-  if (correctWords.length > 0) {
-    let matchedWords = 0;
-    let totalWordSimilarity = 0;
-    
-    correctWords.forEach(correctWord => {
-      let bestWordMatch = 0;
-      userWords.forEach(userWord => {
-        const similarity = defaultCompare(userWord, correctWord);
-        bestWordMatch = Math.max(bestWordMatch, similarity);
-      });
-      
-      if (bestWordMatch >= 0.7) {
-        matchedWords++;
-        totalWordSimilarity += bestWordMatch;
-      }
-    });
-    
-    if (matchedWords > 0) {
-      const avgWordSimilarity = totalWordSimilarity / matchedWords;
-      wordScore = (matchedWords / correctWords.length) * avgWordSimilarity * 0.8;
-    }
-  }
-  
-  let finalScore = Math.max(termScore, wordScore, conceptualSimilarity);
-  
-  // Enhanced date matching for European history
-  if (field === 'when') {
-    const userHasDate = /\d+.*?(?:bc|bce|ad|ce|present|today)|\d{4}|\d+s|century/i.test(userOriginal);
-    const correctHasDate = /\d+.*?(?:bc|bce|ad|ce|present|today)|\d{4}|\d+s|century/i.test(String(correctAnswer));
-    
-    if (userHasDate && correctHasDate) {
-      const userDates = userOriginal.toLowerCase().match(/\d+|bc|bce|ad|ce|present|today|century/g) || [];
-      const correctDates = String(correctAnswer).toLowerCase().match(/\d+|bc|bce|ad|ce|present|today|century/g) || [];
-      
-      const normalizeDate = (date) => date.replace(/bce?/g, 'bc').replace(/today/g, 'present');
-      const userDatesNorm = userDates.map(normalizeDate);
-      const correctDatesNorm = correctDates.map(normalizeDate);
-      
-      let dateMatches = 0;
-      userDatesNorm.forEach(userDate => {
-        if (correctDatesNorm.includes(userDate)) {
-          dateMatches++;
-        }
-      });
-      
-      if (dateMatches >= 1 && correctDatesNorm.length >= 1) {
-        const dateScore = 0.8 + (dateMatches / Math.max(correctDatesNorm.length, userDatesNorm.length)) * 0.2;
-        finalScore = Math.max(finalScore, dateScore);
-      }
-    }
-  }
-  
-  // European History specific adjustments
-  if (field === 'who') {
-    const hasProperNoun = /\b[A-Z][a-z]+/.test(userOriginal);
-    if (hasProperNoun && finalScore > 0.3) {
-      finalScore = Math.min(1, finalScore + 0.1);
-    }
-    
-    // Reward specificity for European figures, dynasties, etc.
-    const specificGroups = ['habsburg', 'bourbon', 'tudor', 'stuart', 'valois', 'hohenzollern', 'romanov', 'medici', 'fugger'];
-    const userHasSpecificGroup = specificGroups.some(group => 
-      userNormalized.includes(group)
-    );
-    const correctHasGeneral = /dynasty|house|family|nobility|royalty|monarchy/i.test(String(correctAnswer));
-    
-    if (userHasSpecificGroup && correctHasGeneral && finalScore >= 0.4) {
-      finalScore = Math.min(1, finalScore + 0.2);
-    }
-  }
-  
-  if (field === 'where') {
-    const locationWords = ['france', 'england', 'spain', 'italy', 'germany', 'austria', 'russia', 'netherlands', 'poland', 'hungary', 'ottoman', 'europe', 'continent'];
-    const hasLocation = locationWords.some(word => userNormalized.includes(word));
-    if (hasLocation && finalScore > 0.3) {
-      finalScore = Math.min(1, finalScore + 0.1);
-    }
-  }
-  
-  let keywordBonus = 0;
-  keywords.forEach(keyword => {
-    const k = String(keyword).toLowerCase().trim();
-    if (k && k.length > 3) {
-      if (userNormalized.includes(k) && correctNormalized.includes(k)) {
-        keywordBonus += 0.03;
-      }
-    }
-  });
-  
-  const lengthRatio = userOriginal.length / String(correctAnswer).length;
-  let lengthPenalty = 0;
-  
-  if (lengthRatio < 0.2 && finalScore > 0.5) {
-    lengthPenalty = Math.min(0.3, (0.2 - lengthRatio) * 1.5);
-  }
-  
-  finalScore = Math.max(0, Math.min(1, finalScore + keywordBonus - lengthPenalty));
-  
-  if (userOriginal.length <= 3 && finalScore > 0.7) {
-    finalScore = Math.min(0.7, finalScore);
-  }
-  
-  return finalScore;
-};
-
-const getScoreLevel = (fraction, userAnswer = '', field = null) => {
-  const userLength = String(userAnswer).trim().length;
-  
-  if (fraction === 0 && userLength <= 3) {
-    return { 
-      level: 'no answer', 
-      color: '#991B1B', 
-      bgColor: '#FEE2E2', 
-      icon: <XCircle className="w-5 h-5" />,
-      message: 'Please provide a meaningful answer.' 
-    };
-  }
-  
-  if (fraction >= 0.9) {
-    return { 
-      level: 'excellent', 
-      color: '#10B981', 
-      bgColor: '#D1FAE5', 
-      icon: <CheckCircle className="w-5 h-5" />,
-      message: 'Outstanding! You demonstrated comprehensive understanding.'
-    };
-  }
-  
-  if (fraction >= 0.75) {
-    return { 
-      level: 'very good', 
-      color: '#059669', 
-      bgColor: '#D1FAE5', 
-      icon: <CheckCircle className="w-5 h-5" />,
-      message: 'Very good! You captured the key concepts well.'
-    };
-  }
-  
-  if (fraction >= 0.6) {
-    return { 
-      level: 'good', 
-      color: '#3B82F6', 
-      bgColor: '#DBEAFE', 
-      icon: <AlertCircle className="w-5 h-5" />,
-      message: 'Good work! You got the main idea with some details.'
-    };
-  }
-  
-  if (fraction >= 0.4) {
-    return { 
-      level: 'partial', 
-      color: '#F59E0B', 
-      bgColor: '#FEF3C7', 
-      icon: <AlertCircle className="w-5 h-5" />,
-      message: 'Partially correct. You have some understanding but need more detail.'
-    };
-  }
-  
-  if (fraction >= 0.2) {
-    return { 
-      level: 'needs improvement', 
-      color: '#DC2626', 
-      bgColor: '#FEE2E2', 
-      icon: <XCircle className="w-5 h-5" />,
-      message: 'Your answer shows limited understanding. Please review this topic.'
-    };
-  }
-  
-  return { 
-    level: 'incorrect', 
-    color: '#991B1B', 
-    bgColor: '#FEE2E2', 
-    icon: <XCircle className="w-5 h-5" />,
-    message: 'Incorrect. Please study this topic more thoroughly.'
-  };
-};
-
 const loadTermsFromFile = async () => {
   try {
-    if (!termsData) throw new Error('European History terms data not found.');
+    if (!termsData) throw new Error('Terms data not found.');
     const terms = Array.isArray(termsData) ? termsData : termsData.default || termsData.terms || [];
-    if (!Array.isArray(terms) || terms.length === 0) throw new Error('European History terms data must be a non-empty array');
+    if (!Array.isArray(terms) || terms.length === 0) throw new Error('Terms data must be a non-empty array');
     return terms.map((term, index) => ({
       id: term.id || index + 1,
       unit: term.unit || 1,
@@ -384,64 +33,53 @@ const loadTermsFromFile = async () => {
       keywords: extractKeywords(term)
     }));
   } catch (err) {
-    console.error('Error loading European History terms:', err);
+    console.error('Error loading terms:', err);
     return [];
   }
 };
 
-// To correctly handle the quiz completion event, we extract the results page into its own component.
-// This allows us to use the useEffect hook safely.
-const QuizResults = ({ subject, mode, questionScores, filtered, startTime, endTime, resetQuiz, startQuiz, getUnitSelectionDescription }) => {
+
+const QuizResults = ({ subject, mode, filtered, startTime, endTime, resetQuiz, startQuiz, getUnitSelectionDescription }) => {
   const totalQuestions = filtered.length;
-  const totalPossibleScore = totalQuestions * (mode === 'identification' ? 5 : 1);
-  const totalScore = Object.values(questionScores).reduce((sum, score) => sum + score, 0);
-  const percentage = totalPossibleScore > 0 ? Math.round((totalScore / totalPossibleScore) * 100) : 0;
   const duration = endTime && startTime ? Math.round((endTime - startTime) / 1000) : 0;
 
-  // Track quiz completion once when the component mounts
   useEffect(() => {
-    trackQuizComplete(subject, mode, percentage, duration, totalQuestions);
-  }, []); // Empty dependency array ensures this runs only once
+    // Remove scoring parameters from analytics
+    trackQuizComplete(subject, mode, null, duration, totalQuestions);
+  }, []);
 
   return (
     <div className="p-4">
       <div className="max-w-2xl mx-auto">
         <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-          <div className="flex items-center justify-center mb-4">
-            <Crown className="w-8 h-8 text-purple-600 mr-2" />
-            <h2 className="text-3xl font-bold text-gray-800">Quiz Complete!</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <h2 className="text-3xl font-bold text-gray-800 mb-6">Quiz Complete!</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="bg-green-50 p-4 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{totalQuestions}</div>
+              <div className="text-sm text-gray-600">Questions Completed</div>
+            </div>
             <div className="bg-purple-50 p-4 rounded-lg">
-              <div className="text-2xl font-bold text-purple-600">{percentage}%</div>
-              <div className="text-sm text-gray-600">Final Score</div>
-            </div>
-            <div className="bg-violet-50 p-4 rounded-lg">
-              <div className="text-2xl font-bold text-violet-600">{totalQuestions}</div>
-              <div className="text-sm text-gray-600">Questions</div>
-            </div>
-            <div className="bg-indigo-50 p-4 rounded-lg">
-              <div className="text-2xl font-bold text-indigo-600">{duration}s</div>
+              <div className="text-2xl font-bold text-purple-600">{duration}s</div>
               <div className="text-sm text-gray-600">Duration</div>
             </div>
           </div>
-          <p className="text-gray-600 mb-2">You scored {totalScore.toFixed(1)} out of {totalPossibleScore} points</p>
+          <p className="text-gray-600 mb-2">You completed {totalQuestions} questions</p>
           <p className="text-sm text-gray-500 mb-6">From {getUnitSelectionDescription()}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button 
               onClick={() => {
                 trackUserEngagement('take_another_quiz', subject);
                 resetQuiz();
-              }} 
-              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
+              }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
               <RotateCcw className="w-5 h-5 mr-2" />Take Another Quiz
             </button>
             <button 
               onClick={() => {
-                trackUserEngagement('retry_same_quiz', subject, { mode, previousScore: percentage });
+                trackUserEngagement('retry_same_quiz', subject, { mode });
                 startQuiz(mode);
-              }} 
-              className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
               Retry Same Quiz
             </button>
           </div>
@@ -458,7 +96,7 @@ const EUROTerms = () => {
   const [selectedUnits, setSelectedUnits] = useState(new Set());
   const [previousFilteredLength, setPreviousFilteredLength] = useState(0);
   const [quizMode, setQuizMode] = useState(null);
-  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [currentQuestion, setCurrentQuestion] = useState(0); // ADD THIS LINE - Missing state variable
   const [userAnswers, setUserAnswers] = useState({});
   const [showFeedback, setShowFeedback] = useState(false);
   const [questionScores, setQuestionScores] = useState({});
@@ -533,14 +171,10 @@ const EUROTerms = () => {
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
-
-    // Track quiz start event
     trackQuizStart('euro', mode, selectedUnits.size, filtered.length);
-
     setQuizMode(mode);
     setCurrentQuestion(0);
     setUserAnswers({});
-    setQuestionScores({});
     setShowFeedback(false);
     setShowResult(false);
     setStartTime(Date.now());
@@ -555,21 +189,12 @@ const EUROTerms = () => {
   const submitAnswer = () => {
     const filtered = getFilteredTerms();
     const currentTerm = filtered[currentQuestion];
-    const scores = {};
     const fields = quizMode === 'identification' ? ['who', 'what', 'where', 'when', 'why'] : [quizMode];
     
     fields.forEach(field => {
-      const key = `${currentQuestion}-${field}`;
-      const userAnswer = userAnswers[key] || '';
-      const correctAnswer = currentTerm[field] || '';
-      const score = calculateSimilarityScore(userAnswer, correctAnswer, currentTerm.keywords, field);
-      scores[key] = score;
-
-      // Track individual question answers
-      trackQuestionAnswer('euro', field, score, currentQuestion + 1);
+      trackQuestionAnswer('euro', field, null, currentQuestion + 1); // Changed 'apush' to 'euro'
     });
-
-    setQuestionScores(prev => ({ ...prev, ...scores }));
+    
     setShowFeedback(true);
   };
 
@@ -585,22 +210,20 @@ const EUROTerms = () => {
   };
 
   const resetQuiz = () => {
-    // Track quiz abandonment if a quiz was in progress
     if (quizMode && !showResult) {
       const filtered = getFilteredTerms();
-      trackQuizAbandoned('euro', quizMode, currentQuestion + 1, filtered.length);
+      trackQuizAbandoned('euro', quizMode, currentQuestion + 1, filtered.length); // Changed 'apush' to 'euro'
     }
-
     setQuizMode(null);
     setCurrentQuestion(0);
     setUserAnswers({});
-    setQuestionScores({});
     setShowFeedback(false);
     setShowResult(false);
     setStartTime(null);
     setEndTime(null);
     setPreviewIndex(0);
   };
+
 
   const modeStyles = {
     who: { gradient: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700", text: "text-blue-100", subtext: "text-blue-200" },
@@ -637,12 +260,12 @@ const EUROTerms = () => {
   };
 
   // Use the new Results component
-  if (showResult) {
+ if (showResult) {
     return (
       <QuizResults
-        subject="euro"
+        subject="euro" // Changed from 'apush' to 'euro'
         mode={quizMode}
-        questionScores={questionScores}
+        // REMOVE: questionScores={questionScores}
         filtered={filtered}
         startTime={startTime}
         endTime={endTime}
@@ -657,31 +280,28 @@ const EUROTerms = () => {
   if (quizMode && currentTerm) {
     const fields = quizMode === 'identification' ? ['who', 'what', 'where', 'when', 'why'] : [quizMode];
     const progress = ((currentQuestion + 1) / filtered.length) * 100;
-
+    
     return (
       <div className="p-4">
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-lg shadow-lg p-6">
+            {/* Keep existing header and progress bar */}
             <div className="flex justify-between items-center mb-4">
               <button onClick={resetQuiz} className="text-gray-600 hover:text-gray-800 flex items-center transition-colors">
                 <ArrowLeft className="w-5 h-5 mr-1" />Back to Menu
               </button>
               <span className="text-sm text-gray-500">Question {currentQuestion + 1} of {filtered.length}</span>
             </div>
-
             <div className="w-full bg-gray-200 rounded-full h-2 mb-6">
-              <div className="bg-purple-600 h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+              <div className="bg-indigo-600 h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
             </div>
-
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center bg-purple-50 p-4 rounded-lg">{currentTerm.term}</h2>
-
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center bg-indigo-50 p-4 rounded-lg">{currentTerm.term}</h2>
+            
             <div className="space-y-4">
               {fields.map(field => {
                 const key = `${currentQuestion}-${field}`;
                 const userAnswer = userAnswers[key] || '';
-                const score = questionScores[key];
                 const fieldLabels = { who: 'Who', what: 'What', where: 'Where', when: 'When', why: 'Why/Significance' };
-                const scoreLevel = showFeedback ? getScoreLevel(score, userAnswer, field) : null;
                 
                 return (
                   <div key={field} className="space-y-2">
@@ -689,44 +309,39 @@ const EUROTerms = () => {
                     <textarea
                       value={userAnswer}
                       onChange={(e) => handleAnswer(field, e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
                       rows={3}
                       placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
                       disabled={showFeedback}
                     />
-                    {showFeedback && scoreLevel && (
-                      <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: scoreLevel.bgColor }}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-gray-700">Your Score:</span>
-                          <div className="flex items-center">
-                            {scoreLevel.icon}
-                            <span className="ml-2 font-medium" style={{ color: scoreLevel.color }}>
-                              {Math.round(score * 100)}% ({scoreLevel.level})
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-sm text-gray-700 mb-2">
+                    {/* SIMPLIFIED feedback - just show correct answer */}
+                    {showFeedback && (
+                      <div className="mt-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <div className="text-sm text-gray-700">
                           <strong>Correct Answer:</strong> {currentTerm[field]}
                         </div>
-                        <div className="text-sm text-gray-600 italic">
-                          {scoreLevel.message}
-                        </div>
+                        {userAnswer.trim() && (
+                          <div className="text-sm text-gray-600 mt-1">
+                            <strong>Your Answer:</strong> {userAnswer}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 );
               })}
             </div>
-
+            
+            {/* Keep existing navigation buttons */}
             <div className="flex justify-between mt-6">
               <div></div>
               {!showFeedback ? (
-                <button onClick={submitAnswer} disabled={fields.every(field => !userAnswers[`${currentQuestion}-${field}`])} className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-medium transition-colors">
+                <button onClick={submitAnswer} disabled={fields.every(field => !userAnswers[`${currentQuestion}-${field}`])} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-medium transition-colors">
                   Submit Answer
                 </button>
               ) : (
                 <button onClick={nextQuestion} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center">
-                  {currentQuestion < filtered.length - 1 ? 'Next Question' : 'View Results'}
+                  {currentQuestion < filtered.length - 1 ? 'Next Question' : 'Complete Quiz'}
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </button>
               )}
@@ -746,7 +361,7 @@ const EUROTerms = () => {
             <Crown className="w-12 h-12 text-purple-600 mr-3" />
             <h1 className="text-4xl font-bold text-gray-800">AP European History Terms Quiz</h1>
           </div>
-          <p className="text-gray-600 text-lg">Master your AP European History terms with interactive quizzes</p>
+          <p className="text-gray-600 text-lg">Master your AP European History terms with quizzes and Flashcards</p>
         </div>
 
         {/* Unit selector */}

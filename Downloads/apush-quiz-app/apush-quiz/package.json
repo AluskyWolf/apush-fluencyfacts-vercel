@@ -14,7 +14,7 @@
     "react-router-dom": "^7.8.2",
     "react-scripts": "5.0.1",
     "string-similarity": "^4.0.4",
-    "vercel": "^41.0.2",
+    "vercel": "^46.1.1",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
