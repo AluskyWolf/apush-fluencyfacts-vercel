@@ -38,13 +38,292 @@ const loadTermsFromFile = async () => {
   }
 };
 
+// Individual Flashcard Component
+const Flashcard = ({ term, mode, isFlipped, onFlip }) => {
+  const getFlashcardContent = () => {
+    if (!isFlipped) {
+      // Show the question side
+      if (mode === 'all') {
+        return (
+          <div className="space-y-2 text-center">
+            <div className="text-2xl font-bold text-gray-800 mb-4">{term.term}</div>
+            <div className="text-lg text-gray-600">What do you know about this term?</div>
+            <div className="text-sm text-gray-500 mt-4">Click to reveal all information</div>
+          </div>
+        );
+      } else {
+        const fieldLabels = { 
+          who: 'Who', 
+          what: 'What', 
+          where: 'Where', 
+          when: 'When', 
+          why: 'Why/Significance' 
+        };
+        return (
+          <div className="text-center">
+            <div className="text-xl text-gray-600 mb-4">{fieldLabels[mode]}?</div>
+            <div className="text-3xl font-bold text-gray-800 mb-4">{term.term}</div>
+            <div className="text-sm text-gray-500">Click to reveal the answer</div>
+          </div>
+        );
+      }
+    } else {
+      // Show the answer side
+      if (mode === 'all') {
+        return (
+          <div className="space-y-3">
+            <div className="text-2xl font-bold text-indigo-600 text-center mb-4">
+              {term.term}
+            </div>
+            {term.who && (
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <span className="font-bold text-blue-700">Who:</span>
+                <span className="text-gray-700 ml-2">{term.who}</span>
+              </div>
+            )}
+            {term.what && (
+              <div className="bg-green-50 p-3 rounded-lg">
+                <span className="font-bold text-green-700">What:</span>
+                <span className="text-gray-700 ml-2">{term.what}</span>
+              </div>
+            )}
+            {term.where && (
+              <div className="bg-yellow-50 p-3 rounded-lg">
+                <span className="font-bold text-yellow-700">Where:</span>
+                <span className="text-gray-700 ml-2">{term.where}</span>
+              </div>
+            )}
+            {term.when && (
+              <div className="bg-red-50 p-3 rounded-lg">
+                <span className="font-bold text-red-700">When:</span>
+                <span className="text-gray-700 ml-2">{term.when}</span>
+              </div>
+            )}
+            {term.why && (
+              <div className="bg-indigo-50 p-3 rounded-lg">
+                <span className="font-bold text-indigo-700">Why:</span>
+                <span className="text-gray-700 ml-2">{term.why}</span>
+              </div>
+            )}
+          </div>
+        );
+      } else {
+        const fieldValue = term[mode];
+        const fieldLabels = { 
+          who: 'Who', 
+          what: 'What', 
+          where: 'Where', 
+          when: 'When', 
+          why: 'Why/Significance' 
+        };
+        const fieldColors = {
+          who: 'text-blue-700 bg-blue-50',
+          what: 'text-green-700 bg-green-50', 
+          where: 'text-yellow-700 bg-yellow-50',
+          when: 'text-red-700 bg-red-50',
+          why: 'text-indigo-700 bg-indigo-50'
+        };
+        
+        return (
+          <div className="text-center">
+            <div className="text-2xl font-bold text-indigo-600 mb-6">{term.term}</div>
+            <div className={`p-4 rounded-lg ${fieldColors[mode]}`}>
+              <div className="text-lg font-bold mb-2">{fieldLabels[mode]}:</div>
+              <div className="text-lg text-gray-800">{fieldValue || 'No information available'}</div>
+            </div>
+          </div>
+        );
+      }
+    }
+  };
 
-const QuizResults = ({ subject, mode, filtered, startTime, endTime, resetQuiz, startQuiz, getUnitSelectionDescription }) => {
+  return (
+    <div 
+      onClick={onFlip}
+      className="min-h-[300px] bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-200 rounded-xl p-8 cursor-pointer hover:shadow-lg transition-all duration-300 flex items-center justify-center"
+    >
+      <div className="w-full">
+        {getFlashcardContent()}
+      </div>
+    </div>
+  );
+};
+
+// Main Flashcard Mode Component
+const FlashcardMode = ({ 
+  filtered, 
+  flashcardMode, 
+  currentFlashcard, 
+  setCurrentFlashcard, 
+  isFlipped, 
+  setIsFlipped, 
+  setEndTime,      // Add this prop
+  setShowResult,   // Add this prop
+  onBack 
+}) => {
+  const currentTerm = filtered[currentFlashcard];
+  const progress = ((currentFlashcard + 1) / filtered.length) * 100;
+ 
+  const nextCard = () => {
+    if (currentFlashcard < filtered.length - 1) {
+      setCurrentFlashcard(prev => prev + 1);
+      setIsFlipped(false);
+    } else {
+      // Complete flashcards
+      setEndTime(Date.now());
+      setShowResult(true);
+    }
+  };
+  
+  const prevCard = () => {
+    if (currentFlashcard > 0) {
+      setCurrentFlashcard(prev => prev - 1);
+      setIsFlipped(false);
+    }
+  };
+  
+  const flipCard = () => {
+    setIsFlipped(!isFlipped);
+  };
+
+  if (!currentTerm) return null;
+
+  return (
+    <div className="p-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-4">
+            <button 
+              onClick={onBack} 
+              className="text-gray-600 hover:text-gray-800 flex items-center transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 mr-1" />Back to Menu
+            </button>
+            <span className="text-sm text-gray-500">
+              Card {currentFlashcard + 1} of {filtered.length}
+            </span>
+          </div>
+          
+          {/* Progress Bar */}
+          <div className="w-full bg-gray-200 rounded-full h-2 mb-6">
+            <div 
+              className="bg-indigo-600 h-2 rounded-full transition-all duration-300" 
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+
+          {/* Flashcard */}
+          <div className="mb-6">
+            <Flashcard 
+              term={currentTerm}
+              mode={flashcardMode}
+              isFlipped={isFlipped}
+              onFlip={flipCard}
+            />
+          </div>
+
+          {/* Instructions */}
+          <div className="text-center text-gray-500 text-sm mb-6">
+            {!isFlipped ? 'Click the card to reveal the answer' : 'Click the card to flip back'}
+          </div>
+
+          {/* Navigation */}
+          <div className="flex justify-between items-center">
+            <button 
+              onClick={prevCard}
+              disabled={currentFlashcard === 0}
+              className="flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Previous
+            </button>
+            
+            <div className="text-sm text-gray-600">
+              {flashcardMode === 'all' ? 'All Fields' : flashcardMode.charAt(0).toUpperCase() + flashcardMode.slice(1)} Mode
+            </div>
+            
+            <button 
+              onClick={nextCard}
+              className="flex items-center px-4 py-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg transition-colors"
+            >
+              {currentFlashcard < filtered.length - 1 ? 'Next' : 'Finish'}
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Flashcard Menu Buttons Component
+const FlashcardMenuButtons = ({ startFlashcards, filtered }) => {
+  const modeStyles = {
+    who: { gradient: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700", text: "text-blue-100", subtext: "text-blue-200" },
+    what: { gradient: "from-green-500 to-green-600 hover:from-green-600 hover:to-green-700", text: "text-green-100", subtext: "text-green-200" },
+    where: { gradient: "from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700", text: "text-yellow-100", subtext: "text-yellow-200" },
+    when: { gradient: "from-red-500 to-red-600 hover:from-red-600 hover:to-red-700", text: "text-red-100", subtext: "text-red-200" },
+    why: { gradient: "from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700", text: "text-indigo-100", subtext: "text-indigo-200" }
+  };
+
+  return (
+    <div className="mb-6">
+      <h3 className="text-lg font-medium text-gray-700 mb-3 flex items-center">
+        🃏 Flashcards
+        <span className="ml-2 text-sm text-gray-500">(Click cards to flip and reveal answers)</span>
+      </h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <button 
+          onClick={() => startFlashcards('all')} 
+          disabled={filtered.length === 0} 
+          className="bg-gradient-to-r from-slate-500 to-slate-600 hover:from-slate-600 hover:to-slate-700 disabled:from-gray-400 disabled:to-gray-500 text-white p-4 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100"
+        >
+          <div className="text-lg mb-1">📚 All Fields</div>
+          <div className="text-slate-100 text-sm">See complete term info</div>
+        </button>
+        {Object.entries(modeStyles).map(([mode, styles]) => (
+          <button 
+            key={mode} 
+            onClick={() => startFlashcards(mode)} 
+            disabled={filtered.length === 0} 
+            className={`bg-gradient-to-r ${styles.gradient} disabled:from-gray-400 disabled:to-gray-500 text-white p-4 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100`}
+          >
+            <div className="text-lg mb-1">
+              {mode === 'who' && '👤'} {mode === 'what' && '📖'} {mode === 'where' && '📍'} {mode === 'when' && '📅'} {mode === 'why' && '💡'} 
+              {' '}{mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </div>
+            <div className={`${styles.subtext} text-sm`}>
+              Study {mode === 'why' ? 'significance' : mode} only
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export { Flashcard, FlashcardMode, FlashcardMenuButtons };
+
+const QuizResults = ({ 
+  subject, 
+  mode, 
+  filtered, 
+  startTime, 
+  endTime, 
+  resetQuiz, 
+  startQuiz, 
+  startFlashcards,  // Add this prop
+  getUnitSelectionDescription 
+}) => {
   const totalQuestions = filtered.length;
   const duration = endTime && startTime ? Math.round((endTime - startTime) / 1000) : 0;
+  
+  // Check if this was a flashcard mode
+  const isFlashcardMode = mode && mode.startsWith('flashcard-');
+  const actualMode = isFlashcardMode ? mode.replace('flashcard-', '') : mode;
 
   useEffect(() => {
-    // Remove scoring parameters from analytics
     trackQuizComplete(subject, mode, null, duration, totalQuestions);
   }, []);
 
@@ -52,18 +331,24 @@ const QuizResults = ({ subject, mode, filtered, startTime, endTime, resetQuiz, s
     <div className="p-4">
       <div className="max-w-2xl mx-auto">
         <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-          <h2 className="text-3xl font-bold text-gray-800 mb-6">Quiz Complete!</h2>
+          <h2 className="text-3xl font-bold text-gray-800 mb-6">
+            {isFlashcardMode ? 'Flashcards Complete!' : 'Quiz Complete!'}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div className="bg-green-50 p-4 rounded-lg">
               <div className="text-2xl font-bold text-green-600">{totalQuestions}</div>
-              <div className="text-sm text-gray-600">Questions Completed</div>
+              <div className="text-sm text-gray-600">
+                {isFlashcardMode ? 'Terms Studied' : 'Questions Completed'}
+              </div>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg">
               <div className="text-2xl font-bold text-purple-600">{duration}s</div>
               <div className="text-sm text-gray-600">Duration</div>
             </div>
           </div>
-          <p className="text-gray-600 mb-2">You completed {totalQuestions} questions</p>
+          <p className="text-gray-600 mb-2">
+            You {isFlashcardMode ? 'studied' : 'completed'} {totalQuestions} {isFlashcardMode ? 'terms' : 'questions'}
+          </p>
           <p className="text-sm text-gray-500 mb-6">From {getUnitSelectionDescription()}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button 
@@ -72,15 +357,20 @@ const QuizResults = ({ subject, mode, filtered, startTime, endTime, resetQuiz, s
                 resetQuiz();
               }}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
-              <RotateCcw className="w-5 h-5 mr-2" />Take Another Quiz
+              <RotateCcw className="w-5 h-5 mr-2" />
+              {isFlashcardMode ? 'Study More Terms' : 'Take Another Quiz'}
             </button>
             <button 
               onClick={() => {
                 trackUserEngagement('retry_same_quiz', subject, { mode });
-                startQuiz(mode);
+                if (isFlashcardMode) {
+                  startFlashcards(actualMode);
+                } else {
+                  startQuiz(actualMode);
+                }
               }}
               className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
-              Retry Same Quiz
+              {isFlashcardMode ? 'Retry Same Flashcards' : 'Retry Same Quiz'}
             </button>
           </div>
         </div>
@@ -104,6 +394,9 @@ const EUROTerms = () => {
   const [startTime, setStartTime] = useState(null);
   const [endTime, setEndTime] = useState(null);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [flashcardMode, setFlashcardMode] = useState(null);
+  const [currentFlashcard, setCurrentFlashcard] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -181,6 +474,15 @@ const EUROTerms = () => {
     setEndTime(null);
   };
 
+  const startFlashcards = (mode) => {
+    const filtered = getFilteredTerms();
+    if (filtered.length === 0) return;
+    trackQuizStart('euro', `flashcard-${mode}`, selectedUnits.size, filtered.length);
+    setFlashcardMode(mode);
+    setCurrentFlashcard(0);
+    setIsFlipped(false);
+  };
+
   const handleAnswer = (field, answer) => {
     const key = `${currentQuestion}-${field}`;
     setUserAnswers(prev => ({ ...prev, [key]: answer }));
@@ -192,9 +494,9 @@ const EUROTerms = () => {
     const fields = quizMode === 'identification' ? ['who', 'what', 'where', 'when', 'why'] : [quizMode];
     
     fields.forEach(field => {
-      trackQuestionAnswer('euro', field, null, currentQuestion + 1); // Changed 'apush' to 'euro'
+      trackQuestionAnswer('euro', field, null, currentQuestion + 1);
     });
-    
+
     setShowFeedback(true);
   };
 
@@ -212,10 +514,17 @@ const EUROTerms = () => {
   const resetQuiz = () => {
     if (quizMode && !showResult) {
       const filtered = getFilteredTerms();
-      trackQuizAbandoned('euro', quizMode, currentQuestion + 1, filtered.length); // Changed 'apush' to 'euro'
+      trackQuizAbandoned('euro', quizMode, currentQuestion + 1, filtered.length);
+    }
+    if (flashcardMode) {
+      const filtered = getFilteredTerms();
+      trackQuizAbandoned('euro', `flashcard-${flashcardMode}`, currentFlashcard + 1, filtered.length);
     }
     setQuizMode(null);
+    setFlashcardMode(null);
     setCurrentQuestion(0);
+    setCurrentFlashcard(0);
+    setIsFlipped(false);
     setUserAnswers({});
     setShowFeedback(false);
     setShowResult(false);
@@ -223,7 +532,6 @@ const EUROTerms = () => {
     setEndTime(null);
     setPreviewIndex(0);
   };
-
 
   const modeStyles = {
     who: { gradient: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700", text: "text-blue-100", subtext: "text-blue-200" },
@@ -260,22 +568,37 @@ const EUROTerms = () => {
   };
 
   // Use the new Results component
- if (showResult) {
+  if (showResult) {
     return (
       <QuizResults
-        subject="euro" // Changed from 'apush' to 'euro'
-        mode={quizMode}
-        // REMOVE: questionScores={questionScores}
+        subject="euro"
+        mode={quizMode || `flashcard-${flashcardMode}`}
         filtered={filtered}
         startTime={startTime}
         endTime={endTime}
         resetQuiz={resetQuiz}
         startQuiz={startQuiz}
+        startFlashcards={startFlashcards}  // Add this line
         getUnitSelectionDescription={getUnitSelectionDescription}
       />
     );
   }
 
+  if (flashcardMode) {
+    return (
+      <FlashcardMode
+        filtered={filtered}
+        flashcardMode={flashcardMode}
+        currentFlashcard={currentFlashcard}
+        setCurrentFlashcard={setCurrentFlashcard}
+        isFlipped={isFlipped}
+        setIsFlipped={setIsFlipped}
+        setEndTime={setEndTime}  // Add this
+        setShowResult={setShowResult}  // Add this
+        onBack={resetQuiz}
+      />
+    );
+  }
   // Quiz interface
   if (quizMode && currentTerm) {
     const fields = quizMode === 'identification' ? ['who', 'what', 'where', 'when', 'why'] : [quizMode];
@@ -419,51 +742,71 @@ const EUROTerms = () => {
           </div>
         </div>
 
-        {/* Quiz modes */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Choose Quiz Mode</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <button
-              onClick={() => startQuiz('identification')}
-              disabled={filtered.length === 0}
-              className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100"
-            >
-              <div className="flex items-center justify-center mb-2">
-                <Crown className="w-6 h-6 mr-2" />
-                <span className="text-xl">Full Identification</span>
-              </div>
-              <div className="text-purple-100 text-sm">Answer all 5 W's for each term</div>
-            </button>
+       {/* Study Modes */}
+<div className="bg-white rounded-lg shadow-lg p-6">
+  <h2 className="text-xl font-semibold text-gray-800 mb-6">Study Mode</h2>
 
-            {Object.entries(modeStyles).map(([mode, styles]) => (
-              <button
-                key={mode}
-                onClick={() => startQuiz(mode)}
-                disabled={filtered.length === 0}
-                className={`bg-gradient-to-r ${styles.gradient} disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100`}
-              >
-                <div className="text-xl mb-2">
-                  {mode === 'who' && '👤'} 
-                  {mode === 'what' && '📖'} 
-                  {mode === 'where' && '🏰'} 
-                  {mode === 'when' && '📅'} 
-                  {mode === 'why' && '💡'} 
-                  {' '}{mode.charAt(0).toUpperCase() + mode.slice(1)} Only
-                </div>
-                <div className={`${styles.subtext} text-sm`}>
-                  Focus on {mode === 'why' ? 'significance' : mode} questions only
-                </div>
-              </button>
-            ))}
-          </div>
+    {/* Flashcards Section */}
+  <div className="mb-8">
+    <FlashcardMenuButtons 
+      startFlashcards={startFlashcards} 
+      filtered={filtered} 
+    />
+  </div>
 
-          {filtered.length === 0 && (
-            <div className="text-center text-gray-500 mt-4">
-              <AlertCircle className="w-8 h-8 mx-auto mb-2" />
-              No terms available for the selected units. Please select at least one unit.
-            </div>
-          )}
+  {/* Quiz Section */}
+  <div>
+    <h3 className="text-lg font-medium text-gray-700 mb-3 flex items-center">
+      ✏️ Practice Quiz
+      <span className="ml-2 text-sm text-gray-500">(Test your knowledge with written answers)</span>
+    </h3>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <button
+        onClick={() => startQuiz('identification')}
+        disabled={filtered.length === 0}
+        className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100"
+      >
+        <div className="flex items-center justify-center mb-2">
+          🎯
+          <span className="text-xl ml-2">Full Identification</span>
         </div>
+        <div className="text-purple-100 text-sm">Answer all 5 W's for each term</div>
+      </button>
+
+      {Object.entries(modeStyles).map(([mode, styles]) => (
+        <button
+          key={mode}
+          onClick={() => startQuiz(mode)}
+          disabled={filtered.length === 0}
+          className={`bg-gradient-to-r ${styles.gradient} disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100`}
+        >
+          <div className="text-xl mb-2 flex items-center justify-center">
+            {mode === 'who' && '👤'} 
+            {mode === 'what' && '📖'} 
+            {mode === 'where' && '📍'} 
+            {mode === 'when' && '📅'} 
+            {mode === 'why' && '💡'} 
+            <span className="ml-2">{mode.charAt(0).toUpperCase() + mode.slice(1)} Quiz</span>
+          </div>
+          <div className={`${styles.subtext} text-sm`}>
+            Quiz {mode === 'why' ? 'significance' : mode} questions only
+          </div>
+        </button>
+      ))}
+    </div>
+  </div>
+
+  {/* Warning when no terms available */}
+  {filtered.length === 0 && (
+    <div className="text-center text-gray-500 mt-6">
+      <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+      No terms available for the selected units. Please select at least one unit.
+    </div>
+  )}
+</div>
+
+
+
 
         {/* Preview Cards */}
         {filtered.length > 0 && (
