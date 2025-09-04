@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Flag, Globe, Crown, ArrowRight, CheckCircle, Clock, Target } from 'lucide-react';
+import { BookOpen, Flag, Globe, Crown, ArrowRight, CheckCircle, Clock, Folder } from 'lucide-react';
 
 const HomePage = () => {
   const subjects = [
@@ -32,14 +32,14 @@ const HomePage = () => {
 
   const features = [
     {
-      icon: <Target className="w-8 h-8 text-blue-600" />,
-      title: 'Scoring',
-      description: 'Scoring that understands partial answers and gives detailed feedback.'
+      icon: <Folder className="w-8 h-8 text-blue-600" />,
+      title: 'Flashcards',
+      description: 'Interactive flashcards that help you memorize key terms and concepts.'
     },
     {
       icon: <CheckCircle className="w-8 h-8 text-green-600" />,
-      title: 'Multiple Quiz Modes',
-      description: 'Practice individual fields (Who, What, Where, When, Why) or take comprehensive identification quizzes.'
+      title: 'Practice Quizzes',
+      description: 'Practice individual fields (Who, What, Where, When, Why) or take practice quizzes.'
     }
   ];
 
