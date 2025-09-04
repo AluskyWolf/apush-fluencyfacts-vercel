@@ -12,6 +12,7 @@ import {
   X
 } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { trackQuizStart, trackQuizComplete, trackQuizAbandoned, trackUnitSelection, trackQuestionAnswer, trackError, trackUserEngagement } from '../utils/analytics';
 
 import termsData from '../data/apushTerms.js';
@@ -900,6 +901,7 @@ const APUSHTerms = () => {
         </div>
       </div>
       <Analytics />
+      <SpeedInsights />
     </>
   );
 };

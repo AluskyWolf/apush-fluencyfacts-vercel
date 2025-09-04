@@ -12,7 +12,8 @@ import {
 
 // This import is now for the AP World History terms
 import termsData from '../data/worldTerms.js'; 
-
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 // Import the analytics functions
 import { 
   trackQuizStart, 
@@ -947,8 +948,11 @@ const WorldTerms = () => {
           <Clock className="w-4 h-4 inline mr-1" />
           Ready to quiz {filtered.length} AP World History terms from {getUnitSelectionDescription().toLowerCase()}
         </div>
-      </div>
+       </div>
+      <Analytics />
+      <SpeedInsights />
     </div>
+    
   );
 };
 

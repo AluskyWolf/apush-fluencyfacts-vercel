@@ -5,6 +5,8 @@ import {
   BookOpen, Clock, CheckCircle, XCircle, AlertCircle, ArrowLeft, ArrowRight, RotateCcw, Check, X, Crown
 } from 'lucide-react';
 import termsData from '../data/euroTerms.js';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 // Import the new analytics functions
 import { trackQuizStart, trackQuizComplete, trackQuizAbandoned, trackUnitSelection, trackQuestionAnswer, trackError, trackUserEngagement } from '../utils/analytics';
 
@@ -919,7 +921,9 @@ const EUROTerms = () => {
           <Clock className="w-4 h-4 inline mr-1" />
           Ready to quiz {filtered.length} European History terms from {getUnitSelectionDescription().toLowerCase()}
         </div>
-      </div>
+       </div>
+      <Analytics />
+      <SpeedInsights />
     </div>
   );
 };
