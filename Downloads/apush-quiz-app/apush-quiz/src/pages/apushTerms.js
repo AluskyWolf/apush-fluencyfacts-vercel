@@ -9,7 +9,8 @@ import {
   ArrowRight,
   RotateCcw,
   Check,
-  X
+  X,
+  Shuffle  // Add Shuffle import
 } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -25,6 +26,7 @@ const extractKeywords = (term = {}) => {
   const words = text.split(/\W+/).filter(w => w.length > 3);
   return Array.from(new Set(words)).slice(0, 10);
 };
+
 const loadTermsFromFile = async () => {
   try {
     if (!termsData) throw new Error('Terms data not found.');
@@ -45,6 +47,15 @@ const loadTermsFromFile = async () => {
     console.error('Error loading terms:', err);
     return [];
   }
+};
+
+const shuffleArray = (array) => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 };
 
 const Flashcard = ({ term, mode, isFlipped, onFlip }) => {
@@ -402,6 +413,8 @@ const APUSHTerms = () => {
   const [flashcardMode, setFlashcardMode] = useState(null);
   const [currentFlashcard, setCurrentFlashcard] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [shuffledTerms, setShuffledTerms] = useState([]);
+  const [isShuffleEnabled, setIsShuffleEnabled] = useState(true); // NEW STATE FOR SHUFFLE TOGGLE
 
   useEffect(() => {
     const loadData = async () => {
@@ -460,10 +473,24 @@ const APUSHTerms = () => {
     setSelectedUnits(new Set());
   };
 
+  // NEW FUNCTION: Only shuffle if enabled
+  const prepareTermsForStudy = (filtered) => {
+    return isShuffleEnabled ? shuffleArray(filtered) : [...filtered];
+  };
+
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
-    trackQuizStart('apush', mode, selectedUnits.size, filtered.length);
+    
+    // Use the new function that respects shuffle setting
+    const orderedTerms = prepareTermsForStudy(filtered);
+    setShuffledTerms(orderedTerms);
+    
+    // Debug logging
+    console.log('Original order:', filtered.map(t => t.term));
+    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
+    
+    trackQuizStart('apush', mode, selectedUnits.size, orderedTerms.length);
     setQuizMode(mode);
     setCurrentQuestion(0);
     setUserAnswers({});
@@ -476,7 +503,16 @@ const APUSHTerms = () => {
   const startFlashcards = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
-    trackQuizStart('apush', `flashcard-${mode}`, selectedUnits.size, filtered.length);
+    
+    // Use the new function that respects shuffle setting
+    const orderedTerms = prepareTermsForStudy(filtered);
+    setShuffledTerms(orderedTerms);
+    
+    // Debug logging
+    console.log('Original order:', filtered.map(t => t.term));
+    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
+    
+    trackQuizStart('apush', `flashcard-${mode}`, selectedUnits.size, orderedTerms.length);
     setFlashcardMode(mode);
     setCurrentFlashcard(0);
     setIsFlipped(false);
@@ -488,8 +524,7 @@ const APUSHTerms = () => {
   };
 
   const submitAnswer = () => {
-    const filtered = getFilteredTerms();
-    const currentTerm = filtered[currentQuestion];
+    const currentTerm = shuffledTerms[currentQuestion];
     const fields = quizMode === 'identification' ? ['who', 'what', 'where', 'when', 'why'] : [quizMode];
     fields.forEach(field => {
       trackQuestionAnswer('apush', field, null, currentQuestion + 1);
@@ -499,8 +534,7 @@ const APUSHTerms = () => {
   };
 
   const nextQuestion = () => {
-    const filtered = getFilteredTerms();
-    if (currentQuestion < filtered.length - 1) {
+    if (currentQuestion < shuffledTerms.length - 1) {
       setCurrentQuestion(prev => prev + 1);
       setShowFeedback(false);
     } else {
@@ -509,28 +543,28 @@ const APUSHTerms = () => {
     }
   };
 
-
   const resetQuiz = () => {
-  if (quizMode && !showResult) {
-    const filtered = getFilteredTerms();
-    trackQuizAbandoned('apush', quizMode, currentQuestion + 1, filtered.length);
-  }
-  if (flashcardMode) {
-    const filtered = getFilteredTerms();
-    trackQuizAbandoned('apush', `flashcard-${flashcardMode}`, currentFlashcard + 1, filtered.length);
-  }
-  setQuizMode(null);
-  setFlashcardMode(null);
-  setCurrentQuestion(0);
-  setCurrentFlashcard(0);
-  setIsFlipped(false);
-  setUserAnswers({});
-  setShowFeedback(false);
-  setShowResult(false);
-  setStartTime(null);
-  setEndTime(null);
-  setPreviewIndex(0);
-};
+    if (quizMode && !showResult) {
+      const termsToUse = shuffledTerms.length > 0 ? shuffledTerms : getFilteredTerms();
+      trackQuizAbandoned('apush', quizMode, currentQuestion + 1, termsToUse.length);
+    }
+    if (flashcardMode) {
+      const termsToUse = shuffledTerms.length > 0 ? shuffledTerms : getFilteredTerms();
+      trackQuizAbandoned('apush', `flashcard-${flashcardMode}`, currentFlashcard + 1, termsToUse.length);
+    }
+    setQuizMode(null);
+    setFlashcardMode(null);
+    setShuffledTerms([]); // Clear shuffled terms
+    setCurrentQuestion(0);
+    setCurrentFlashcard(0);
+    setIsFlipped(false);
+    setUserAnswers({});
+    setShowFeedback(false);
+    setShowResult(false);
+    setStartTime(null);
+    setEndTime(null);
+    setPreviewIndex(0);
+  };
 
   const modeStyles = {
     who: { gradient: "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700", text: "text-blue-100", subtext: "text-blue-200" },
@@ -554,7 +588,6 @@ const APUSHTerms = () => {
 
   const availableUnits = getAvailableUnits();
   const filtered = getFilteredTerms();
-  const currentTerm = filtered[currentQuestion];
 
   const getUnitSelectionDescription = () => {
     if (selectedUnits.size === 0) return 'No units selected';
@@ -571,12 +604,12 @@ const APUSHTerms = () => {
       <QuizResults
         subject="apush"
         mode={quizMode || `flashcard-${flashcardMode}`}
-        filtered={filtered}
+        filtered={shuffledTerms.length > 0 ? shuffledTerms : filtered}
         startTime={startTime}
         endTime={endTime}
         resetQuiz={resetQuiz}
         startQuiz={startQuiz}
-        startFlashcards={startFlashcards}  // This should now work
+        startFlashcards={startFlashcards}
         getUnitSelectionDescription={getUnitSelectionDescription}
       />
     );
@@ -585,22 +618,23 @@ const APUSHTerms = () => {
   if (flashcardMode) {
     return (
       <FlashcardMode
-        filtered={filtered}
+        filtered={shuffledTerms.length > 0 ? shuffledTerms : filtered}
         flashcardMode={flashcardMode}
         currentFlashcard={currentFlashcard}
         setCurrentFlashcard={setCurrentFlashcard}
         isFlipped={isFlipped}
         setIsFlipped={setIsFlipped}
-        setEndTime={setEndTime}  // Add this
-        setShowResult={setShowResult}  // Add this
+        setEndTime={setEndTime}
+        setShowResult={setShowResult}
         onBack={resetQuiz}
       />
     );
   }
 
-  if (quizMode && currentTerm) {
+  if (quizMode && shuffledTerms.length > 0) {
+    const currentTerm = shuffledTerms[currentQuestion];
     const fields = quizMode === 'identification' ? ['who', 'what', 'where', 'when', 'why'] : [quizMode];
-    const progress = ((currentQuestion + 1) / filtered.length) * 100;
+    const progress = ((currentQuestion + 1) / shuffledTerms.length) * 100;
     
     return (
       <div className="p-4">
@@ -611,7 +645,7 @@ const APUSHTerms = () => {
               <button onClick={resetQuiz} className="text-gray-600 hover:text-gray-800 flex items-center transition-colors">
                 <ArrowLeft className="w-5 h-5 mr-1" />Back to Menu
               </button>
-              <span className="text-sm text-gray-500">Question {currentQuestion + 1} of {filtered.length}</span>
+              <span className="text-sm text-gray-500">Question {currentQuestion + 1} of {shuffledTerms.length}</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2 mb-6">
               <div className="bg-indigo-600 h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
@@ -662,7 +696,7 @@ const APUSHTerms = () => {
                 </button>
               ) : (
                 <button onClick={nextQuestion} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center">
-                  {currentQuestion < filtered.length - 1 ? 'Next Question' : 'Complete Quiz'}
+                  {currentQuestion < shuffledTerms.length - 1 ? 'Next Question' : 'Complete Quiz'}
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </button>
               )}
@@ -721,75 +755,68 @@ const APUSHTerms = () => {
             </div>
           </div>
           
-         <div className="bg-white rounded-lg shadow-lg p-6">
-  <h2 className="text-xl font-semibold text-gray-800 mb-4">Study Mode</h2>
-  
-  {/* Flashcards Section */}
-  <div className="mb-6">
-    <h3 className="text-lg font-medium text-gray-700 mb-3 flex items-center">
-      🃏 Flashcards
-      <span className="ml-2 text-sm text-gray-500">(Click cards to flip and reveal answers)</span>
-    </h3>
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-      <button 
-        onClick={() => startFlashcards('all')} 
-        disabled={filtered.length === 0} 
-        className="bg-gradient-to-r from-slate-500 to-slate-600 hover:from-slate-600 hover:to-slate-700 disabled:from-gray-400 disabled:to-gray-500 text-white p-4 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100"
-      >
-        <div className="text-lg mb-1">📚 All Fields</div>
-        <div className="text-slate-100 text-sm">See complete term info</div>
-      </button>
-      {Object.entries(modeStyles).map(([mode, styles]) => (
-        <button 
-          key={mode} 
-          onClick={() => startFlashcards(mode)} 
-          disabled={filtered.length === 0} 
-          className={`bg-gradient-to-r ${styles.gradient} disabled:from-gray-400 disabled:to-gray-500 text-white p-4 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100`}
-        >
-          <div className="text-lg mb-1">
-            {mode === 'who' && '👤'} {mode === 'what' && '📖'} {mode === 'where' && '📍'} {mode === 'when' && '📅'} {mode === 'why' && '💡'} 
-            {' '}{mode.charAt(0).toUpperCase() + mode.slice(1)}
-          </div>
-          <div className={`${styles.subtext} text-sm`}>
-            Study {mode === 'why' ? 'significance' : mode} only
-          </div>
-        </button>
-      ))}
-    </div>
-  </div>
+          {/* Study Modes */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-800">Study Mode</h2>
+              <div className="flex items-center space-x-3">
+                <Shuffle className="w-5 h-5 text-gray-600" />
+                <span className="text-sm font-medium text-gray-700">Shuffle</span>
+                <button
+                  onClick={() => setIsShuffleEnabled(!isShuffleEnabled)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    isShuffleEnabled ? 'bg-indigo-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      isShuffleEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+            
+            {/* Flashcards Section */}
+            <div className="mb-8">
+              <FlashcardMenuButtons 
+                startFlashcards={startFlashcards} 
+                filtered={filtered} 
+              />
+            </div>
 
-  {/* Quiz Section */}
-  <div>
-    <h3 className="text-lg font-medium text-gray-700 mb-3 flex items-center">
-      ✏️ Practice Quiz
-      <span className="ml-2 text-sm text-gray-500">(Test your knowledge with written answers)</span>
-    </h3>
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-      <button onClick={() => startQuiz('identification')} disabled={filtered.length === 0} className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white p-4 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100">
-        <div className="text-lg mb-1">🎯 Full Identification</div>
-        <div className="text-purple-100 text-sm">Answer all 5 W's for each term</div>
-      </button>
-      {Object.entries(modeStyles).map(([mode, styles]) => (
-        <button key={mode} onClick={() => startQuiz(mode)} disabled={filtered.length === 0} className={`bg-gradient-to-r ${styles.gradient} disabled:from-gray-400 disabled:to-gray-500 text-white p-4 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100`}>
-          <div className="text-lg mb-1">
-            {mode === 'who' && '👤'} {mode === 'what' && '📖'} {mode === 'where' && '📍'} {mode === 'when' && '📅'} {mode === 'why' && '💡'} 
-            {' '}{mode.charAt(0).toUpperCase() + mode.slice(1)} Quiz
+            {/* Quiz Section */}
+            <div>
+              <h3 className="text-lg font-medium text-gray-700 mb-3 flex items-center">
+                ✏️ Practice Quiz
+                <span className="ml-2 text-sm text-gray-500">(Test your knowledge with written answers)</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <button onClick={() => startQuiz('identification')} disabled={filtered.length === 0} className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white p-4 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100">
+                  <div className="text-lg mb-1">🎯 Full Identification</div>
+                  <div className="text-purple-100 text-sm">Answer all 5 W's for each term</div>
+                </button>
+                {Object.entries(modeStyles).map(([mode, styles]) => (
+                  <button key={mode} onClick={() => startQuiz(mode)} disabled={filtered.length === 0} className={`bg-gradient-to-r ${styles.gradient} disabled:from-gray-400 disabled:to-gray-500 text-white p-4 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100`}>
+                    <div className="text-lg mb-1">
+                      {mode === 'who' && '👤'} {mode === 'what' && '📖'} {mode === 'where' && '📍'} {mode === 'when' && '📅'} {mode === 'why' && '💡'} 
+                      {' '}{mode.charAt(0).toUpperCase() + mode.slice(1)} Quiz
+                    </div>
+                    <div className={`${styles.subtext} text-sm`}>
+                      Quiz {mode === 'why' ? 'significance' : mode} questions only
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {filtered.length === 0 && (
+              <div className="text-center text-gray-500 mt-4">
+                <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                No terms available for the selected units. Please select at least one unit.
+              </div>
+            )}
           </div>
-          <div className={`${styles.subtext} text-sm`}>
-            Quiz {mode === 'why' ? 'significance' : mode} questions only
-          </div>
-        </button>
-      ))}
-    </div>
-  </div>
-  
-  {filtered.length === 0 && (
-    <div className="text-center text-gray-500 mt-4">
-      <AlertCircle className="w-8 h-8 mx-auto mb-2" />
-      No terms available for the selected units. Please select at least one unit.
-    </div>
-  )}
-</div>
 
           {filtered.length > 0 && (
             <div className="mt-6 bg-white rounded-lg shadow-lg p-6">
@@ -897,6 +924,7 @@ const APUSHTerms = () => {
           <div className="mt-6 text-center text-gray-500 text-sm">
             <Clock className="w-4 h-4 inline mr-1" />
             Ready to quiz {filtered.length} APUSH terms from {getUnitSelectionDescription().toLowerCase()}
+            {isShuffleEnabled ? ' (shuffled)' : ' (original order)'}
           </div>
         </div>
       </div>

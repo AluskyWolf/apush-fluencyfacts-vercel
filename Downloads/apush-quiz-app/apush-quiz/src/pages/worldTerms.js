@@ -7,7 +7,8 @@ import {
   RotateCcw,
   Check,
   X,
-  Globe
+  Globe,
+  Shuffle  // ADD THIS IMPORT
 } from 'lucide-react';
 
 // This import is now for the AP World History terms
@@ -24,6 +25,16 @@ import {
   trackError, 
   trackUserEngagement 
 } from '../utils/analytics';
+
+// ADD THE SHUFFLE FUNCTION
+const shuffleArray = (array) => {
+  const shuffled = [...array]; // Create a copy to avoid mutating original
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
 
 // All the same helper functions as APUSH (reusing the same scoring logic)
 const loadTermsFromFile = async () => {
@@ -405,6 +416,10 @@ const WorldTerms = () => {
   const [flashcardMode, setFlashcardMode] = useState(null);
   const [currentFlashcard, setCurrentFlashcard] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+  // ADD THE SHUFFLED TERMS STATE
+  const [shuffledTerms, setShuffledTerms] = useState([]);
+  // ADD THE SHUFFLE TOGGLE STATE
+  const [isShuffleEnabled, setIsShuffleEnabled] = useState(true);
   
   const getFilteredTerms = () => {
     if (selectedUnits.size === 0) return [];
@@ -474,10 +489,25 @@ const WorldTerms = () => {
     trackUnitSelection('world', [], getAvailableUnits().length);
   };
 
+  // ADD THE PREPARE TERMS FUNCTION (like in euroTerms.js)
+  const prepareTermsForStudy = (filtered) => {
+    return isShuffleEnabled ? shuffleArray(filtered) : [...filtered];
+  };
+
+  // UPDATED startQuiz function with shuffle setting
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
-    trackQuizStart('euro', mode, selectedUnits.size, filtered.length);
+    
+    // Use the new function that respects shuffle setting
+    const orderedTerms = prepareTermsForStudy(filtered);
+    setShuffledTerms(orderedTerms);
+    
+    // Debug logging
+    console.log('Original order:', filtered.map(t => t.term));
+    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
+    
+    trackQuizStart('world', mode, selectedUnits.size, orderedTerms.length);
     setQuizMode(mode);
     setCurrentQuestion(0);
     setUserAnswers({});
@@ -487,10 +517,20 @@ const WorldTerms = () => {
     setEndTime(null);
   };
 
+  // UPDATED startFlashcards function with shuffle setting
   const startFlashcards = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
-    trackQuizStart('euro', `flashcard-${mode}`, selectedUnits.size, filtered.length);
+    
+    // Use the new function that respects shuffle setting
+    const orderedTerms = prepareTermsForStudy(filtered);
+    setShuffledTerms(orderedTerms);
+    
+    // Debug logging
+    console.log('Original order:', filtered.map(t => t.term));
+    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
+    
+    trackQuizStart('world', `flashcard-${mode}`, selectedUnits.size, orderedTerms.length);
     setFlashcardMode(mode);
     setCurrentFlashcard(0);
     setIsFlipped(false);
@@ -512,8 +552,8 @@ const WorldTerms = () => {
   };
 
   const nextQuestion = () => {
-    const filtered = getFilteredTerms();
-    if (currentQuestion < filtered.length - 1) {
+    // Use shuffled terms instead of filtered
+    if (currentQuestion < shuffledTerms.length - 1) {
       setCurrentQuestion(prev => prev + 1);
       setShowFeedback(false);
     } else {
@@ -522,17 +562,17 @@ const WorldTerms = () => {
     }
   };
 
+  // UPDATED resetQuiz function
   const resetQuiz = () => {
     if (quizMode && !showResult) {
-      const filtered = getFilteredTerms();
-      trackQuizAbandoned('euro', quizMode, currentQuestion + 1, filtered.length);
+      trackQuizAbandoned('world', quizMode, currentQuestion + 1, shuffledTerms.length);
     }
     if (flashcardMode) {
-      const filtered = getFilteredTerms();
-      trackQuizAbandoned('euro', `flashcard-${flashcardMode}`, currentFlashcard + 1, filtered.length);
+      trackQuizAbandoned('world', `flashcard-${flashcardMode}`, currentFlashcard + 1, shuffledTerms.length);
     }
     setQuizMode(null);
     setFlashcardMode(null);
+    setShuffledTerms([]); // Clear shuffled terms
     setCurrentQuestion(0);
     setCurrentFlashcard(0);
     setIsFlipped(false);
@@ -567,7 +607,6 @@ const WorldTerms = () => {
 
   const availableUnits = getAvailableUnits();
   const filtered = getFilteredTerms();
-  const currentTerm = filtered[currentQuestion];
 
   const getUnitSelectionDescription = () => {
     if (selectedUnits.size === 0) return 'No units selected';
@@ -579,14 +618,13 @@ const WorldTerms = () => {
     return `${sortedUnits.length} units selected`;
   };
 
-  // Use the new Results component
-  // Use the new Results component
+  // Use the new Results component - UPDATED to use shuffledTerms
   if (showResult) {
     return (
       <QuizResults
-        subject="euro"
+        subject="world"
         mode={quizMode || `flashcard-${flashcardMode}`}
-        filtered={filtered}
+        filtered={shuffledTerms.length > 0 ? shuffledTerms : filtered}
         startTime={startTime}
         endTime={endTime}
         resetQuiz={resetQuiz}
@@ -597,10 +635,11 @@ const WorldTerms = () => {
     );
   }
 
+  // UPDATED flashcard mode to use shuffledTerms
   if (flashcardMode) {
     return (
       <FlashcardMode
-        filtered={filtered}
+        filtered={shuffledTerms.length > 0 ? shuffledTerms : filtered}
         flashcardMode={flashcardMode}
         currentFlashcard={currentFlashcard}
         setCurrentFlashcard={setCurrentFlashcard}
@@ -613,10 +652,11 @@ const WorldTerms = () => {
     );
   }
 
-  // Quiz interface
-  if (quizMode && currentTerm) {
+  // Quiz interface - UPDATED to use shuffledTerms
+  if (quizMode && shuffledTerms.length > 0) {
+    const currentTerm = shuffledTerms[currentQuestion];
     const fields = quizMode === 'identification' ? ['who', 'what', 'where', 'when', 'why'] : [quizMode];
-    const progress = ((currentQuestion + 1) / filtered.length) * 100;
+    const progress = ((currentQuestion + 1) / shuffledTerms.length) * 100;
     
     return (
       <div className="p-4">
@@ -627,7 +667,7 @@ const WorldTerms = () => {
               <button onClick={resetQuiz} className="text-gray-600 hover:text-gray-800 flex items-center transition-colors">
                 <ArrowLeft className="w-5 h-5 mr-1" />Back to Menu
               </button>
-              <span className="text-sm text-gray-500">Question {currentQuestion + 1} of {filtered.length}</span>
+              <span className="text-sm text-gray-500">Question {currentQuestion + 1} of {shuffledTerms.length}</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2 mb-6">
               <div className="bg-indigo-600 h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
@@ -678,7 +718,7 @@ const WorldTerms = () => {
                 </button>
               ) : (
                 <button onClick={nextQuestion} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center">
-                  {currentQuestion < filtered.length - 1 ? 'Next Question' : 'Complete Quiz'}
+                  {currentQuestion < shuffledTerms.length - 1 ? 'Next Question' : 'Complete Quiz'}
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </button>
               )}
@@ -762,69 +802,86 @@ const WorldTerms = () => {
           </div>
         </div>
 
-         {/* Study Modes */}
-<div className="bg-white rounded-lg shadow-lg p-6">
-  <h2 className="text-xl font-semibold text-gray-800 mb-6">Study Mode</h2>
+        {/* Study Modes */}
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-800">Study Mode</h2>
+            <div className="flex items-center space-x-3">
+              <Shuffle className="w-5 h-5 text-gray-600" />
+              <span className="text-sm font-medium text-gray-700">Shuffle</span>
+              <button
+                onClick={() => setIsShuffleEnabled(!isShuffleEnabled)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  isShuffleEnabled ? 'bg-indigo-600' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    isShuffleEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
 
-    {/* Flashcards Section */}
-  <div className="mb-8">
-    <FlashcardMenuButtons 
-      startFlashcards={startFlashcards} 
-      filtered={filtered} 
-    />
-  </div>
+          {/* Flashcards Section */}
+          <div className="mb-8">
+            <FlashcardMenuButtons 
+              startFlashcards={startFlashcards} 
+              filtered={filtered} 
+            />
+          </div>
 
-  {/* Quiz Section */}
-  <div>
-    <h3 className="text-lg font-medium text-gray-700 mb-3 flex items-center">
-      ✏️ Practice Quiz
-      <span className="ml-2 text-sm text-gray-500">(Test your knowledge with written answers)</span>
-    </h3>
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <button
-        onClick={() => startQuiz('identification')}
-        disabled={filtered.length === 0}
-        className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100"
-      >
-        <div className="flex items-center justify-center mb-2">
-          🎯
-          <span className="text-xl ml-2">Full Identification</span>
+          {/* Quiz Section */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-700 mb-3 flex items-center">
+              ✏️ Practice Quiz
+              <span className="ml-2 text-sm text-gray-500">(Test your knowledge with written answers)</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <button
+                onClick={() => startQuiz('identification')}
+                disabled={filtered.length === 0}
+                className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100"
+              >
+                <div className="flex items-center justify-center mb-2">
+                  🎯
+                  <span className="text-xl ml-2">Full Identification</span>
+                </div>
+                <div className="text-purple-100 text-sm">Answer all 5 W's for each term</div>
+              </button>
+
+              {Object.entries(modeStyles).map(([mode, styles]) => (
+                <button
+                  key={mode}
+                  onClick={() => startQuiz(mode)}
+                  disabled={filtered.length === 0}
+                  className={`bg-gradient-to-r ${styles.gradient} disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100`}
+                >
+                  <div className="text-xl mb-2 flex items-center justify-center">
+                    {mode === 'who' && '👤'} 
+                    {mode === 'what' && '📖'} 
+                    {mode === 'where' && '📍'} 
+                    {mode === 'when' && '📅'} 
+                    {mode === 'why' && '💡'} 
+                    <span className="ml-2">{mode.charAt(0).toUpperCase() + mode.slice(1)} Quiz</span>
+                  </div>
+                  <div className={`${styles.subtext} text-sm`}>
+                    Quiz {mode === 'why' ? 'significance' : mode} questions only
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Warning when no terms available */}
+          {filtered.length === 0 && (
+            <div className="text-center text-gray-500 mt-6">
+              <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+              No terms available for the selected units. Please select at least one unit.
+            </div>
+          )}
         </div>
-        <div className="text-purple-100 text-sm">Answer all 5 W's for each term</div>
-      </button>
-
-      {Object.entries(modeStyles).map(([mode, styles]) => (
-        <button
-          key={mode}
-          onClick={() => startQuiz(mode)}
-          disabled={filtered.length === 0}
-          className={`bg-gradient-to-r ${styles.gradient} disabled:from-gray-400 disabled:to-gray-500 text-white p-6 rounded-lg font-medium transition-all transform hover:scale-105 disabled:hover:scale-100`}
-        >
-          <div className="text-xl mb-2 flex items-center justify-center">
-            {mode === 'who' && '👤'} 
-            {mode === 'what' && '📖'} 
-            {mode === 'where' && '📍'} 
-            {mode === 'when' && '📅'} 
-            {mode === 'why' && '💡'} 
-            <span className="ml-2">{mode.charAt(0).toUpperCase() + mode.slice(1)} Quiz</span>
-          </div>
-          <div className={`${styles.subtext} text-sm`}>
-            Quiz {mode === 'why' ? 'significance' : mode} questions only
-          </div>
-        </button>
-      ))}
-    </div>
-  </div>
-
-  {/* Warning when no terms available */}
-  {filtered.length === 0 && (
-    <div className="text-center text-gray-500 mt-6">
-      <AlertCircle className="w-8 h-8 mx-auto mb-2" />
-      No terms available for the selected units. Please select at least one unit.
-    </div>
-  )}
-</div>
-
 
         {/* Preview Cards */}
         {filtered.length > 0 && (
@@ -947,6 +1004,7 @@ const WorldTerms = () => {
         <div className="mt-6 text-center text-gray-500 text-sm">
           <Clock className="w-4 h-4 inline mr-1" />
           Ready to quiz {filtered.length} AP World History terms from {getUnitSelectionDescription().toLowerCase()}
+          {isShuffleEnabled ? ' (shuffled)' : ' (original order)'}
         </div>
        </div>
       <Analytics />
