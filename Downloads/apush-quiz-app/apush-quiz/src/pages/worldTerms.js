@@ -15,15 +15,16 @@ import {
 import termsData from '../data/worldTerms.js'; 
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
-// Import the analytics functions
-import { 
-  trackQuizStart, 
-  trackQuizComplete, 
-  trackQuizAbandoned, 
-  trackUnitSelection, 
-  trackQuestionAnswer, 
-  trackError, 
-  trackUserEngagement 
+
+// UPDATED: Import the new analytics functions with flags
+import {
+  trackWithFlags,
+  trackQuizStartWithFlags,
+  trackQuizAbandoned,
+  trackQuestionAnswer,
+  trackError,
+  trackUserEngagementWithFlags,
+  trackUnitSelection
 } from '../utils/analytics';
 
 // ADD THE SHUFFLE FUNCTION
@@ -325,7 +326,7 @@ const FlashcardMenuButtons = ({ startFlashcards, filtered }) => {
 
 export { Flashcard, FlashcardMode, FlashcardMenuButtons };
 
-// Quiz Results Component with Analytics
+// UPDATED: Quiz Results Component with new analytics
 const QuizResults = ({ 
   subject, 
   mode, 
@@ -344,9 +345,7 @@ const QuizResults = ({
   const isFlashcardMode = mode && mode.startsWith('flashcard-');
   const actualMode = isFlashcardMode ? mode.replace('flashcard-', '') : mode;
 
-  useEffect(() => {
-    trackQuizComplete(subject, mode, null, duration, totalQuestions);
-  }, []);
+  // REMOVED: The problematic useEffect that was calling trackQuizComplete
 
   return (
     <div className="p-4">
@@ -374,7 +373,7 @@ const QuizResults = ({
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button 
               onClick={() => {
-                trackUserEngagement('take_another_quiz', subject);
+                trackUserEngagementWithFlags('take_another_quiz', subject);
                 resetQuiz();
               }}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
@@ -383,7 +382,7 @@ const QuizResults = ({
             </button>
             <button 
               onClick={() => {
-                trackUserEngagement('retry_same_quiz', subject, { mode });
+                trackUserEngagementWithFlags('retry_same_quiz', subject, { mode });
                 if (isFlashcardMode) {
                   startFlashcards(actualMode);
                 } else {
@@ -444,7 +443,19 @@ const WorldTerms = () => {
     loadData();
   }, []);
 
-  
+  // ADDED: Feature flag management useEffect
+  useEffect(() => {
+    const flags = { 'shuffle-enabled': isShuffleEnabled };
+    let flagsElement = document.getElementById('vercel-flags');
+    if (!flagsElement) {
+      flagsElement = document.createElement('script');
+      flagsElement.id = 'vercel-flags';
+      flagsElement.type = 'application/json';
+      document.head.appendChild(flagsElement);
+    }
+    flagsElement.textContent = JSON.stringify(flags);
+  }, [isShuffleEnabled]);
+
   const getAvailableUnits = () => [...new Set(worldTerms.map(term => term.unit))].sort((a, b) => a - b);
 
   useEffect(() => {
@@ -494,20 +505,31 @@ const WorldTerms = () => {
     return isShuffleEnabled ? shuffleArray(filtered) : [...filtered];
   };
 
-  // UPDATED startQuiz function with shuffle setting
+  // ADDED: Toggle shuffle function with analytics
+  const toggleShuffle = () => {
+    const newState = !isShuffleEnabled;
+    setIsShuffleEnabled(newState);
+    trackWithFlags(
+      'feature_flag_toggle',
+      {
+        flag_name: 'shuffle-enabled',
+        new_value: newState,
+        old_value: isShuffleEnabled
+      },
+      [newState ? 'shuffle-enabled' : null].filter(Boolean)
+    );
+  };
+
+  // UPDATED: startQuiz function with new analytics
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
     
-    // Use the new function that respects shuffle setting
     const orderedTerms = prepareTermsForStudy(filtered);
     setShuffledTerms(orderedTerms);
     
-    // Debug logging
-    console.log('Original order:', filtered.map(t => t.term));
-    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
-    
-    trackQuizStart('world', mode, selectedUnits.size, orderedTerms.length);
+    const activeFlags = [isShuffleEnabled ? 'shuffle-enabled' : null].filter(Boolean);
+    trackQuizStartWithFlags('world', mode, selectedUnits.size, orderedTerms.length, activeFlags);
     setQuizMode(mode);
     setCurrentQuestion(0);
     setUserAnswers({});
@@ -517,20 +539,16 @@ const WorldTerms = () => {
     setEndTime(null);
   };
 
-  // UPDATED startFlashcards function with shuffle setting
+  // UPDATED: startFlashcards function with new analytics
   const startFlashcards = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
     
-    // Use the new function that respects shuffle setting
     const orderedTerms = prepareTermsForStudy(filtered);
     setShuffledTerms(orderedTerms);
     
-    // Debug logging
-    console.log('Original order:', filtered.map(t => t.term));
-    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
-    
-    trackQuizStart('world', `flashcard-${mode}`, selectedUnits.size, orderedTerms.length);
+    const activeFlags = [isShuffleEnabled ? 'shuffle-enabled' : null].filter(Boolean);
+    trackQuizStartWithFlags('world', `flashcard-${mode}`, selectedUnits.size, orderedTerms.length, activeFlags);
     setFlashcardMode(mode);
     setCurrentFlashcard(0);
     setIsFlipped(false);
@@ -562,13 +580,15 @@ const WorldTerms = () => {
     }
   };
 
-  // UPDATED resetQuiz function
+  // UPDATED: resetQuiz function
   const resetQuiz = () => {
     if (quizMode && !showResult) {
-      trackQuizAbandoned('world', quizMode, currentQuestion + 1, shuffledTerms.length);
+      const termsToUse = shuffledTerms.length > 0 ? shuffledTerms : getFilteredTerms();
+      trackQuizAbandoned('world', quizMode, currentQuestion + 1, termsToUse.length);
     }
     if (flashcardMode) {
-      trackQuizAbandoned('world', `flashcard-${flashcardMode}`, currentFlashcard + 1, shuffledTerms.length);
+      const termsToUse = shuffledTerms.length > 0 ? shuffledTerms : getFilteredTerms();
+      trackQuizAbandoned('world', `flashcard-${flashcardMode}`, currentFlashcard + 1, termsToUse.length);
     }
     setQuizMode(null);
     setFlashcardMode(null);
@@ -748,7 +768,7 @@ const WorldTerms = () => {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  trackUserEngagement('select_all_units', 'world');
+                  trackUserEngagementWithFlags('select_all_units', 'world');
                   selectAllUnits();
                 }}
                 className="text-sm px-3 py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg transition-colors flex items-center"
@@ -758,7 +778,7 @@ const WorldTerms = () => {
               </button>
               <button
                 onClick={() => {
-                  trackUserEngagement('clear_all_units', 'world');
+                  trackUserEngagementWithFlags('clear_all_units', 'world');
                   clearAllUnits();
                 }}
                 className="text-sm px-3 py-1 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors flex items-center"
@@ -810,7 +830,7 @@ const WorldTerms = () => {
               <Shuffle className="w-5 h-5 text-gray-600" />
               <span className="text-sm font-medium text-gray-700">Shuffle</span>
               <button
-                onClick={() => setIsShuffleEnabled(!isShuffleEnabled)}
+                onClick={toggleShuffle}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                   isShuffleEnabled ? 'bg-indigo-600' : 'bg-gray-200'
                 }`}
@@ -893,7 +913,7 @@ const WorldTerms = () => {
             <div className="flex justify-between items-center mb-4">
               <button 
                 onClick={() => {
-                  trackUserEngagement('preview_navigation', 'world', { action: 'previous' });
+                  trackUserEngagementWithFlags('preview_navigation', 'world', { action: 'previous' });
                   setPreviewIndex(Math.max(0, previewIndex - 4));
                 }}
                 disabled={previewIndex === 0}
@@ -912,7 +932,7 @@ const WorldTerms = () => {
                     <button
                       key={pageIndex}
                       onClick={() => {
-                        trackUserEngagement('preview_navigation', 'world', { action: 'page_jump', page: pageIndex + 1 });
+                        trackUserEngagementWithFlags('preview_navigation', 'world', { action: 'page_jump', page: pageIndex + 1 });
                         setPreviewIndex(pageIndex * 4);
                       }}
                       className={`w-2 h-2 rounded-full transition-colors ${
@@ -927,7 +947,7 @@ const WorldTerms = () => {
               
               <button 
                 onClick={() => {
-                  trackUserEngagement('preview_navigation', 'world', { action: 'next' });
+                  trackUserEngagementWithFlags('preview_navigation', 'world', { action: 'next' });
                   setPreviewIndex(Math.min(filtered.length - 4, previewIndex + 4));
                 }}
                 disabled={previewIndex + 4 >= filtered.length}
@@ -989,7 +1009,7 @@ const WorldTerms = () => {
             <div className="mt-4 text-center">
               <button 
                 onClick={() => {
-                  trackUserEngagement('preview_navigation', 'world', { action: 'random' });
+                  trackUserEngagementWithFlags('preview_navigation', 'world', { action: 'random' });
                   setPreviewIndex(Math.floor(Math.random() * Math.max(1, filtered.length - 3)) / 4 * 4);
                 }}
                 className="text-sm text-green-600 hover:text-green-800 transition-colors"

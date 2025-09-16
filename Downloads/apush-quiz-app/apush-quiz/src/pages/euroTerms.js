@@ -7,8 +7,16 @@ import {
 import termsData from '../data/euroTerms.js';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
-// Import the new analytics functions
-import { trackQuizStart, trackQuizComplete, trackQuizAbandoned, trackUnitSelection, trackQuestionAnswer, trackError, trackUserEngagement } from '../utils/analytics';
+// Updated analytics imports
+import {
+  trackWithFlags,
+  trackQuizStartWithFlags,
+  trackQuizAbandoned,
+  trackQuestionAnswer,
+  trackError,
+  trackUserEngagementWithFlags,
+  trackUnitSelection
+} from '../utils/analytics';
 
 // String Similarity Helper Functions
 const extractKeywords = (term = {}) => {
@@ -335,10 +343,6 @@ const QuizResults = ({
   const isFlashcardMode = mode && mode.startsWith('flashcard-');
   const actualMode = isFlashcardMode ? mode.replace('flashcard-', '') : mode;
 
-  useEffect(() => {
-    trackQuizComplete(subject, mode, null, duration, totalQuestions);
-  }, []);
-
   return (
     <div className="p-4">
       <div className="max-w-2xl mx-auto">
@@ -365,7 +369,7 @@ const QuizResults = ({
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button 
               onClick={() => {
-                trackUserEngagement('take_another_quiz', subject);
+                trackUserEngagementWithFlags('take_another_quiz', subject);
                 resetQuiz();
               }}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
@@ -374,7 +378,7 @@ const QuizResults = ({
             </button>
             <button 
               onClick={() => {
-                trackUserEngagement('retry_same_quiz', subject, { mode });
+                trackUserEngagementWithFlags('retry_same_quiz', subject, { mode });
                 if (isFlashcardMode) {
                   startFlashcards(actualMode);
                 } else {
@@ -412,6 +416,18 @@ const EUROTerms = () => {
   const [shuffledTerms, setShuffledTerms] = useState([]);
   const [isShuffleEnabled, setIsShuffleEnabled] = useState(true); // NEW STATE FOR SHUFFLE TOGGLE
 
+  // Emit shuffle-enabled flag to Vercel Analytics
+  useEffect(() => {
+    const flags = { 'shuffle-enabled': isShuffleEnabled };
+    let flagsElement = document.getElementById('vercel-flags');
+    if (!flagsElement) {
+      flagsElement = document.createElement('script');
+      flagsElement.id = 'vercel-flags';
+      flagsElement.type = 'application/json';
+      document.head.appendChild(flagsElement);
+    }
+    flagsElement.textContent = JSON.stringify(flags);
+  }, [isShuffleEnabled]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -476,6 +492,20 @@ const EUROTerms = () => {
     setSelectedUnits(new Set());
   };
 
+  const toggleShuffle = () => {
+    const newState = !isShuffleEnabled;
+    setIsShuffleEnabled(newState);
+    trackWithFlags(
+      'feature_flag_toggle',
+      {
+        flag_name: 'shuffle-enabled',
+        new_value: newState,
+        old_value: isShuffleEnabled
+      },
+      [newState ? 'shuffle-enabled' : null].filter(Boolean)
+    );
+  };
+
   // UPDATED FUNCTION: Only shuffle if enabled
   const prepareTermsForStudy = (filtered) => {
     return isShuffleEnabled ? shuffleArray(filtered) : [...filtered];
@@ -485,15 +515,11 @@ const EUROTerms = () => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
     
-    // Use the new function that respects shuffle setting
     const orderedTerms = prepareTermsForStudy(filtered);
     setShuffledTerms(orderedTerms);
     
-    // Debug logging
-    console.log('Original order:', filtered.map(t => t.term));
-    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
-    
-    trackQuizStart('euro', mode, selectedUnits.size, orderedTerms.length);
+    const activeFlags = [isShuffleEnabled ? 'shuffle-enabled' : null].filter(Boolean);
+    trackQuizStartWithFlags('euro', mode, selectedUnits.size, orderedTerms.length, activeFlags);
     setQuizMode(mode);
     setCurrentQuestion(0);
     setUserAnswers({});
@@ -507,15 +533,11 @@ const EUROTerms = () => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
     
-    // Use the new function that respects shuffle setting
     const orderedTerms = prepareTermsForStudy(filtered);
     setShuffledTerms(orderedTerms);
     
-    // Debug logging
-    console.log('Original order:', filtered.map(t => t.term));
-    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
-    
-    trackQuizStart('euro', `flashcard-${mode}`, selectedUnits.size, orderedTerms.length);
+    const activeFlags = [isShuffleEnabled ? 'shuffle-enabled' : null].filter(Boolean);
+    trackQuizStartWithFlags('euro', `flashcard-${mode}`, selectedUnits.size, orderedTerms.length, activeFlags);
     setFlashcardMode(mode);
     setCurrentFlashcard(0);
     setIsFlipped(false);
@@ -549,10 +571,12 @@ const EUROTerms = () => {
 
   const resetQuiz = () => {
     if (quizMode && !showResult) {
-      trackQuizAbandoned('euro', quizMode, currentQuestion + 1, shuffledTerms.length);
+      const termsToUse = shuffledTerms.length > 0 ? shuffledTerms : getFilteredTerms();
+      trackQuizAbandoned('euro', quizMode, currentQuestion + 1, termsToUse.length);
     }
     if (flashcardMode) {
-      trackQuizAbandoned('euro', `flashcard-${flashcardMode}`, currentFlashcard + 1, shuffledTerms.length);
+      const termsToUse = shuffledTerms.length > 0 ? shuffledTerms : getFilteredTerms();
+      trackQuizAbandoned('euro', `flashcard-${flashcardMode}`, currentFlashcard + 1, termsToUse.length);
     }
     setQuizMode(null);
     setFlashcardMode(null);
@@ -785,7 +809,7 @@ const EUROTerms = () => {
       <Shuffle className="w-5 h-5 text-gray-600" />
       <span className="text-sm font-medium text-gray-700">Shuffle</span>
       <button
-        onClick={() => setIsShuffleEnabled(!isShuffleEnabled)}
+        onClick={toggleShuffle}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
           isShuffleEnabled ? 'bg-indigo-600' : 'bg-gray-200'
         }`}

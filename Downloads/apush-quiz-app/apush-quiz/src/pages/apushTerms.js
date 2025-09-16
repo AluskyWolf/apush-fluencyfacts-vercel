@@ -10,16 +10,23 @@ import {
   RotateCcw,
   Check,
   X,
-  Shuffle  // Add Shuffle import
+  Shuffle
 } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
-import { trackQuizStart, trackQuizComplete, trackQuizAbandoned, trackUnitSelection, trackQuestionAnswer, trackError, trackUserEngagement } from '../utils/analytics';
+import {
+  trackWithFlags,
+  trackQuizStartWithFlags,
+  trackQuizAbandoned,
+  trackQuestionAnswer,
+  trackError,
+  trackUserEngagementWithFlags,
+  trackUnitSelection
+} from '../utils/analytics';
 
 import termsData from '../data/apushTerms.js';
 
-
-// String Similarity Helper Functions
+// Helper functions
 const extractKeywords = (term = {}) => {
   if (Array.isArray(term.keywords) && term.keywords.length) return term.keywords;
   const text = `${term.term || ''} ${term.who || ''} ${term.what || ''} ${term.where || ''} ${term.when || ''} ${term.why || ''}`.toLowerCase();
@@ -176,8 +183,8 @@ const FlashcardMode = ({
   setCurrentFlashcard, 
   isFlipped, 
   setIsFlipped, 
-  setEndTime,      // Add this prop
-  setShowResult,   // Add this prop
+  setEndTime,
+  setShowResult,
   onBack 
 }) => {
   const currentTerm = filtered[currentFlashcard];
@@ -330,7 +337,7 @@ const QuizResults = ({
   endTime, 
   resetQuiz, 
   startQuiz, 
-  startFlashcards,  // Add this prop
+  startFlashcards,
   getUnitSelectionDescription 
 }) => {
   const totalQuestions = filtered.length;
@@ -339,10 +346,6 @@ const QuizResults = ({
   // Check if this was a flashcard mode
   const isFlashcardMode = mode && mode.startsWith('flashcard-');
   const actualMode = isFlashcardMode ? mode.replace('flashcard-', '') : mode;
-
-  useEffect(() => {
-    trackQuizComplete(subject, mode, null, duration, totalQuestions);
-  }, []);
 
   return (
     <div className="p-4">
@@ -370,7 +373,7 @@ const QuizResults = ({
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button 
               onClick={() => {
-                trackUserEngagement('take_another_quiz', subject);
+                trackUserEngagementWithFlags('take_another_quiz', subject);
                 resetQuiz();
               }}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center">
@@ -379,7 +382,7 @@ const QuizResults = ({
             </button>
             <button 
               onClick={() => {
-                trackUserEngagement('retry_same_quiz', subject, { mode });
+                trackUserEngagementWithFlags('retry_same_quiz', subject, { mode });
                 if (isFlashcardMode) {
                   startFlashcards(actualMode);
                 } else {
@@ -414,7 +417,7 @@ const APUSHTerms = () => {
   const [currentFlashcard, setCurrentFlashcard] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [shuffledTerms, setShuffledTerms] = useState([]);
-  const [isShuffleEnabled, setIsShuffleEnabled] = useState(true); // NEW STATE FOR SHUFFLE TOGGLE
+  const [isShuffleEnabled, setIsShuffleEnabled] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
@@ -432,6 +435,19 @@ const APUSHTerms = () => {
     };
     loadData();
   }, []);
+
+  // Emit shuffle-enabled flag to Vercel Analytics
+  useEffect(() => {
+    const flags = { 'shuffle-enabled': isShuffleEnabled };
+    let flagsElement = document.getElementById('vercel-flags');
+    if (!flagsElement) {
+      flagsElement = document.createElement('script');
+      flagsElement.id = 'vercel-flags';
+      flagsElement.type = 'application/json';
+      document.head.appendChild(flagsElement);
+    }
+    flagsElement.textContent = JSON.stringify(flags);
+  }, [isShuffleEnabled]);
 
   const getFilteredTerms = () => {
     if (selectedUnits.size === 0) return [];
@@ -473,24 +489,33 @@ const APUSHTerms = () => {
     setSelectedUnits(new Set());
   };
 
-  // NEW FUNCTION: Only shuffle if enabled
   const prepareTermsForStudy = (filtered) => {
     return isShuffleEnabled ? shuffleArray(filtered) : [...filtered];
+  };
+
+  const toggleShuffle = () => {
+    const newState = !isShuffleEnabled;
+    setIsShuffleEnabled(newState);
+    trackWithFlags(
+      'feature_flag_toggle',
+      {
+        flag_name: 'shuffle-enabled',
+        new_value: newState,
+        old_value: isShuffleEnabled
+      },
+      [newState ? 'shuffle-enabled' : null].filter(Boolean)
+    );
   };
 
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
     
-    // Use the new function that respects shuffle setting
     const orderedTerms = prepareTermsForStudy(filtered);
     setShuffledTerms(orderedTerms);
     
-    // Debug logging
-    console.log('Original order:', filtered.map(t => t.term));
-    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
-    
-    trackQuizStart('apush', mode, selectedUnits.size, orderedTerms.length);
+    const activeFlags = [isShuffleEnabled ? 'shuffle-enabled' : null].filter(Boolean);
+    trackQuizStartWithFlags('apush', mode, selectedUnits.size, orderedTerms.length, activeFlags);
     setQuizMode(mode);
     setCurrentQuestion(0);
     setUserAnswers({});
@@ -504,15 +529,11 @@ const APUSHTerms = () => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
     
-    // Use the new function that respects shuffle setting
     const orderedTerms = prepareTermsForStudy(filtered);
     setShuffledTerms(orderedTerms);
     
-    // Debug logging
-    console.log('Original order:', filtered.map(t => t.term));
-    console.log('Final order (shuffle=' + isShuffleEnabled + '):', orderedTerms.map(t => t.term));
-    
-    trackQuizStart('apush', `flashcard-${mode}`, selectedUnits.size, orderedTerms.length);
+    const activeFlags = [isShuffleEnabled ? 'shuffle-enabled' : null].filter(Boolean);
+    trackQuizStartWithFlags('apush', `flashcard-${mode}`, selectedUnits.size, orderedTerms.length, activeFlags);
     setFlashcardMode(mode);
     setCurrentFlashcard(0);
     setIsFlipped(false);
@@ -554,7 +575,7 @@ const APUSHTerms = () => {
     }
     setQuizMode(null);
     setFlashcardMode(null);
-    setShuffledTerms([]); // Clear shuffled terms
+    setShuffledTerms([]);
     setCurrentQuestion(0);
     setCurrentFlashcard(0);
     setIsFlipped(false);
@@ -640,7 +661,6 @@ const APUSHTerms = () => {
       <div className="p-4">
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-lg shadow-lg p-6">
-            {/* Keep existing header and progress bar */}
             <div className="flex justify-between items-center mb-4">
               <button onClick={resetQuiz} className="text-gray-600 hover:text-gray-800 flex items-center transition-colors">
                 <ArrowLeft className="w-5 h-5 mr-1" />Back to Menu
@@ -669,7 +689,6 @@ const APUSHTerms = () => {
                       placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
                       disabled={showFeedback}
                     />
-                    {/* SIMPLIFIED feedback - just show correct answer */}
                     {showFeedback && (
                       <div className="mt-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
                         <div className="text-sm text-gray-700">
@@ -687,7 +706,6 @@ const APUSHTerms = () => {
               })}
             </div>
             
-            {/* Keep existing navigation buttons */}
             <div className="flex justify-between mt-6">
               <div></div>
               {!showFeedback ? (
@@ -763,7 +781,7 @@ const APUSHTerms = () => {
                 <Shuffle className="w-5 h-5 text-gray-600" />
                 <span className="text-sm font-medium text-gray-700">Shuffle</span>
                 <button
-                  onClick={() => setIsShuffleEnabled(!isShuffleEnabled)}
+                  onClick={toggleShuffle}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                     isShuffleEnabled ? 'bg-indigo-600' : 'bg-gray-200'
                   }`}
