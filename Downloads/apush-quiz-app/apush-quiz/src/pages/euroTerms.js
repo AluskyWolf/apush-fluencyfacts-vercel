@@ -205,7 +205,34 @@ const FlashcardMode = ({
   const flipCard = () => {
     setIsFlipped(!isFlipped);
   };
+   useEffect(() => {
+    const handleKeyDown = (event) => {
+      // Prevent default behavior and stop propagation for our handled keys
+      if (event.code === 'Space' || event.code === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      
+      switch (event.code) {
+        case 'Space':
+          flipCard();
+          break;
+        case 'Enter':
+          nextCard();
+          break;
+        default:
+          break;
+      }
+    };
 
+    // Add event listener
+    document.addEventListener('keydown', handleKeyDown);
+
+    // Cleanup function to remove event listener
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [currentFlashcard, isFlipped, filtered.length]);
   if (!currentTerm) return null;
 
   return (
@@ -333,8 +360,9 @@ const QuizResults = ({
   endTime, 
   resetQuiz, 
   startQuiz, 
-  startFlashcards,  // Add this prop
-  getUnitSelectionDescription 
+  startFlashcards,
+  setShowResult, // Add this parameter
+  getUnitSelectionDescription
 }) => {
   const totalQuestions = filtered.length;
   const duration = endTime && startTime ? Math.round((endTime - startTime) / 1000) : 0;
@@ -380,6 +408,7 @@ const QuizResults = ({
               onClick={() => {
                 trackUserEngagementWithFlags('retry_same_quiz', subject, { mode });
                 if (isFlashcardMode) {
+                  setShowResult(false);
                   startFlashcards(actualMode);
                 } else {
                   startQuiz(actualMode);
@@ -541,6 +570,8 @@ const EUROTerms = () => {
     setFlashcardMode(mode);
     setCurrentFlashcard(0);
     setIsFlipped(false);
+    setStartTime(Date.now()); // Add this line
+    setEndTime(null); // Add this line for good measure
   };
 
   const handleAnswer = (field, answer) => {
@@ -638,6 +669,8 @@ const EUROTerms = () => {
         startQuiz={startQuiz}
         startFlashcards={startFlashcards}  // Add this line
         getUnitSelectionDescription={getUnitSelectionDescription}
+        setShowResult={setShowResult} // Add this line
+
       />
     );
   }

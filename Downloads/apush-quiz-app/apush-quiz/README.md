@@ -9,7 +9,8 @@ Started as APUSH Fluency Facts - 120 terms needed to learn, took about 1-2 weeks
 - added flashcards based on user requests!
 - added shuffle based on user requests!
 - learned how to check console logs finally
-- hit 400 total views on 9/14
+- hit 500 total users on 9/21 :)
+
 
 
 
