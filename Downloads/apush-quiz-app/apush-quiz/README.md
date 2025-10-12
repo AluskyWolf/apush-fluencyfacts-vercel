@@ -9,13 +9,12 @@ Started as APUSH Fluency Facts - 120 terms needed to learn, took about 1-2 weeks
 - added flashcards based on user requests!
 - added shuffle based on user requests!
 - learned how to check console logs finally
-- hit 500 total users on 9/21 :)
-
-
+- hit 500 total viewers on 9/21 :)
+- hit 2000 viewers + 500 users on 10/11
 
 
 ### How to Commit and make vercel happy
 git add .
 git commit -m "mesage"
 git push  - breaks vercel a tad so gotta repush it only to vercel
-vercel --prod 
+vercel --prod
