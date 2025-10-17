@@ -1,7 +1,6 @@
 // src/utils/analytics.js
 import { track } from '@vercel/analytics';
 
-
 export const trackEvent = (eventName, properties = {}) => {
   try {
     track(eventName, properties);
@@ -79,52 +78,50 @@ export const trackUserEngagement = (action, subject, details = {}) => {
   });
 };
 
-
-
-
-export const trackWithFlags = (eventName, properties = {}, flags = []) => {
-  // Emit feature flags to DOM for client-side tracking
-  if (typeof window !== 'undefined') {
-    const flagsElement = document.getElementById('vercel-flags');
-    if (flagsElement) {
-      const currentFlags = JSON.parse(flagsElement.textContent || '{}');
-      flags.forEach(flagKey => {
-        // You'd get the actual flag value here
-        currentFlags[flagKey] = getCurrentFlagValue(flagKey);
-      });
-      flagsElement.textContent = JSON.stringify(currentFlags);
-    } else {
-      // Create the flags element if it doesn't exist
-      const newFlagsElement = document.createElement('script');
-      newFlagsElement.id = 'vercel-flags';
-      newFlagsElement.type = 'application/json';
-      const flagsObj = {};
-      flags.forEach(flagKey => {
-        flagsObj[flagKey] = getCurrentFlagValue(flagKey);
-      });
-      newFlagsElement.textContent = JSON.stringify(flagsObj);
-      document.head.appendChild(newFlagsElement);
-    }
-  }
-
-  // Track with flags
-  track(eventName, properties, { flags });
-};
-
 // Helper to get current flag value
 const getCurrentFlagValue = (flagKey) => {
-  // This would integrate with your feature flag provider
-  // For now, we'll check localStorage or use defaults
+  // Read from global window object where components store flag state
   switch (flagKey) {
     case 'shuffle-enabled':
-      return localStorage.getItem('shuffle-enabled') === 'true';
+      return window.__featureFlags?.[flagKey] ?? true;
     case 'flashcard-mode-enhanced':
-      return localStorage.getItem('flashcard-mode-enhanced') === 'true';
+      return window.__featureFlags?.[flagKey] ?? false;
     case 'advanced-unit-selection':
-      return localStorage.getItem('advanced-unit-selection') === 'true';
+      return window.__featureFlags?.[flagKey] ?? false;
     default:
       return false;
   }
+};
+
+// Emit feature flags to DOM for Web Analytics to pick up
+export const emitFeatureFlags = (flags) => {
+  if (typeof window === 'undefined') return;
+
+  let flagsElement = document.getElementById('vercel-flags');
+  if (!flagsElement) {
+    flagsElement = document.createElement('script');
+    flagsElement.id = 'vercel-flags';
+    flagsElement.type = 'application/json';
+    document.head.appendChild(flagsElement);
+  }
+
+  // Convert flag array to object with values
+  const flagsObj = {};
+  flags.forEach(flagKey => {
+    if (flagKey) {
+      flagsObj[flagKey] = getCurrentFlagValue(flagKey);
+    }
+  });
+  
+  flagsElement.textContent = JSON.stringify(flagsObj);
+};
+
+export const trackWithFlags = (eventName, properties = {}, flags = []) => {
+  // Emit flags to DOM first so Web Analytics can pick them up
+  emitFeatureFlags(flags);
+
+  // Track event - Web Analytics will automatically attach the flags
+  track(eventName, properties);
 };
 
 // Enhanced tracking functions with flag support

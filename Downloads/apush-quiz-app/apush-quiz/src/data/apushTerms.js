@@ -138,4 +138,3 @@ const apushTerms = [
 ];
 
 export default apushTerms;
-
