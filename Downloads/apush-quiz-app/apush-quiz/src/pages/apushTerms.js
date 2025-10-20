@@ -542,7 +542,7 @@ const APUSHTerms = () => {
   const startQuiz = (mode) => {
     const filtered = getFilteredTerms();
     if (filtered.length === 0) return;
-    
+   
     const orderedTerms = prepareTermsForStudy(filtered);
     setShuffledTerms(orderedTerms);
     
