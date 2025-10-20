@@ -51,22 +51,22 @@ function PageWrapper({ title, favicon, children }) {
 export const appRoutes = [
   { 
     path: '/', 
-    element: <PageWrapper title="AP Terms Quizzes" favicon="/icons/main512.png"><HomePage /></PageWrapper>, 
+    element: <PageWrapper title="AP Terms Quizzes" favicon="/icons/main512.png?v=2"><HomePage /></PageWrapper>, 
     name: 'AP Terms Quizzes' 
   },
   { 
     path: '/apush', 
-    element: <PageWrapper title="APUSH Terms" favicon="/icons/apush512.png"><APUSHTerms /></PageWrapper>, 
+    element: <PageWrapper title="APUSH Terms" favicon="/icons/apush512.png?v=2"><APUSHTerms /></PageWrapper>, 
     name: 'APUSH Terms' 
   },
   { 
     path: '/ap-world', 
-    element: <PageWrapper title="AP World Terms" favicon="/icons/whap512.png"><WorldTerms /></PageWrapper>, 
+    element: <PageWrapper title="AP World Terms" favicon="/icons/whap512.png?v=2"><WorldTerms /></PageWrapper>, 
     name: 'AP World Terms' 
   },
   { 
     path: '/ap-euro', 
-    element: <PageWrapper title="AP Euro Terms" favicon="/icons/euro512.png"><EuroTerms /></PageWrapper>, 
+    element: <PageWrapper title="AP Euro Terms" favicon="/icons/euro512.png?v=2"><EuroTerms /></PageWrapper>, 
     name: 'AP Euro Terms' 
   },
 ];
