@@ -5,32 +5,15 @@ import EuroTerms from '../pages/euroTerms';
 import HomePage from '../components/HomePage';
 
 function changeFavicon(iconPath) {
-  // Add timestamp to force cache refresh
-  const cacheBuster = `?v=${Date.now()}`;
-  
-  // Remove ALL existing favicon links first
+  // Remove ALL existing favicon links
   document.querySelectorAll("link[rel*='icon']").forEach(link => link.remove());
   
-  // Create fresh links
-  const link32 = document.createElement('link');
-  link32.rel = 'icon';
-  link32.type = 'image/png';
-  link32.sizes = '32x32';
-  link32.href = iconPath.replace('.png', '-32x32.png') + cacheBuster;
-  document.head.appendChild(link32);
-
-  const link192 = document.createElement('link');
-  link192.rel = 'icon';
-  link192.type = 'image/png';
-  link192.sizes = '192x192';
-  link192.href = iconPath.replace('.png', '-192x192.png') + cacheBuster;
-  document.head.appendChild(link192);
-
-  const linkDefault = document.createElement('link');
-  linkDefault.rel = 'icon';
-  linkDefault.type = 'image/png';
-  linkDefault.href = iconPath + cacheBuster;
-  document.head.appendChild(linkDefault);
+  // Add new favicon with cache buster
+  const newLink = document.createElement('link');
+  newLink.rel = 'icon';
+  newLink.type = 'image/png';
+  newLink.href = iconPath + '?v=' + Date.now();
+  document.head.appendChild(newLink);
 }
 
 function PageWrapper({ title, favicon, children }) {
